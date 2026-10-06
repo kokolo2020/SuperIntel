@@ -535,7 +535,7 @@ async function api(path, body){
   const r = await fetch(path, { method:'POST', headers:{'content-type':'application/json','x-app-pin':getPin()}, body:JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (r.status === 401){ try { localStorage.removeItem('si-pin'); } catch(e){} }
-  if (!r.ok) throw { code: j.code || 'error', text: r.status === 401 ? copyFor('not_granted') : undefined };
+  if (!r.ok) throw { code: j.code || 'error', text: r.status === 401 ? copyFor('not_granted') : (j.code === 'rate_limited' ? undefined : (j.error || ('Server error ' + r.status))) };
   return j;
 }
 async function refresh(){

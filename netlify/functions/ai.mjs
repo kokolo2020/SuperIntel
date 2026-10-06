@@ -24,7 +24,7 @@ export default async (req) => {
     headers: { "content-type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: b.json ? { responseMimeType: "application/json" } : {},
+      generationConfig: { thinkingConfig: { thinkingBudget: 0 }, ...(b.json ? { responseMimeType: "application/json" } : {}) },
     }),
   });
   const j = await r.json().catch(() => ({}));
