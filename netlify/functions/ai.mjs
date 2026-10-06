@@ -19,16 +19,26 @@ export default async (req) => {
   const prompt = String(b?.prompt || "").slice(0, 60000);
   if (!prompt) return json({ error: "Missing prompt" }, 400);
 
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: b.json ? { responseMimeType: "application/json" } : {},
-    }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) return json({ code: r.status === 429 ? "rate_limited" : "error", error: j.error?.message || "Gemini error" }, 502);
+  // Try the preferred model first, then fall back if Google says it is overloaded or unavailable.
+  const models = [...new Set([model, "gemini-flash-latest", "gemini-flash-lite-latest"])];
+  let r, j = {};
+  for (const m of models) {
+    try {
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: b.json ? { responseMimeType: "application/json" } : {},
+        }),
+        signal: AbortSignal.timeout(7000),
+      });
+      j = await r.json().catch(() => ({}));
+      if (r.ok) break;
+      if (![404, 429, 500, 503, 504].includes(r.status)) break; // real error (bad key, billing): do not retry
+    } catch { r = null; j = { error: { message: "Gemini timed out" } }; }
+  }
+  if (!r || !r.ok) return json({ code: r?.status === 429 ? "rate_limited" : "error", error: j.error?.message || "Gemini error" }, 502);
 
   const text = (j.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("").trim();
   if (!text) return json({ code: "refused", error: "Empty answer" }, 502);
