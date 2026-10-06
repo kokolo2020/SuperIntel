@@ -2,6 +2,7 @@
 <title>Super Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Khmer:wght@400;700&display=swap">
 <style>
 /* Layout: single column command desk; sticky tab bar; roster lanes color-coded across every view */
 :root{
@@ -33,6 +34,10 @@ h2{font-size:1.1rem;font-weight:600}
 .tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);display:flex;gap:4px;padding-block:12px 8px;overflow-x:auto;margin-inline:-16px;padding-inline:16px}
 .tabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 14px;font:inherit;font-size:.9rem;cursor:pointer}
 .tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.km{font-family:'Noto Sans Khmer','Khmer Sangam MN',sans-serif;line-height:2}
+.kmbig{font-size:1.35rem}
+.kmw{cursor:pointer;border-radius:4px;padding:0 1px}.kmw:hover,.kmw.on{background:var(--soft);outline:1px solid var(--line)}
+.newsitem{cursor:pointer}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 button.btn,.btn{border:0;background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer}
@@ -115,6 +120,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
     <button data-v="appts" aria-selected="false">Appointments</button>
     <button data-v="notes" aria-selected="false">Visit notes</button>
     <button data-v="tools" aria-selected="false">Tools</button>
+    <button data-v="learn" aria-selected="false">Khmer</button>
   </nav>
   <div id="dbBanner" class="banner" hidden>Can't reach the database right now. Check your connection, then pull to refresh.</div>
 
@@ -268,6 +274,27 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
     </div>
    </div>
   </section>
+  <!-- KHMER NEWS -->
+  <section data-view="learn" class="cols" hidden>
+   <div class="col">
+    <div class="card" id="newsCard">
+      <div class="row"><h2>Khmer news today</h2><button class="btn ghost" id="newsRefresh" type="button">Refresh</button></div>
+      <div id="newsList" class="list"></div>
+      <p class="muted" id="newsVia" style="margin:0;font-size:.85rem"></p>
+    </div>
+   </div>
+   <div class="col">
+    <div class="card" id="readerCard">
+      <h2>Reading</h2>
+      <div id="reader"><p class="empty">Tap a headline to read it here.</p></div>
+      <div id="wordBox" class="item" hidden></div>
+    </div>
+    <div class="card" id="vocabCard">
+      <div class="row"><h2>My words</h2><span class="muted" id="vocabCount"></span></div>
+      <div id="vocabList" class="list"></div>
+    </div>
+   </div>
+  </section>
 </div>
 
 <script>
@@ -332,6 +359,7 @@ function render(){
   }
   if (S.view === 'cal') renderCal();
   if (S.view === 'tools'){ renderTools(); if (!S.quotesAt || Date.now() - S.quotesAt > 60000){ S.quotesAt = Date.now(); refreshStocks(); } }
+  if (S.view === 'learn'){ renderVocab(); if (!S.news) loadNews(); }
   if (S.view === 'tasks'){
     const open = S.tasks.filter(t=>!t.done).sort((a,b)=>(b.pri==='high')-(a.pri==='high') || (a.due||'9').localeCompare(b.due||'9'));
     const done = S.tasks.filter(t=>t.done);
@@ -897,6 +925,73 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => { const id = e.target.dataset?.al; if (!id) return; const a = S.alarms.find(x => x.id === id); if (a){ a.on = e.target.checked; a.last = ''; saveAlarms(); } });
 
 /* ---------- boot ---------- */
+
+// ---------- Khmer news reading ----------
+const KMRX = /[ក-៿]/;
+function kmWords(t){
+  try { const seg = new Intl.Segmenter('km', { granularity:'word' }); return [...seg.segment(t)].map(x => ({ w:x.segment, word:x.isWordLike })); } catch(e){}
+  return t.split(/(\s+|​)/).filter(Boolean).map(w => ({ w, word: KMRX.test(w) }));
+}
+function kmHTML(t){ return kmWords(t).map(x => x.word && KMRX.test(x.w) ? `<span class="kmw" data-w="${esc(x.w)}">${esc(x.w)}</span>` : esc(x.w)).join(''); }
+async function kmSpeak(text){
+  if (await geminiSpeak(text)) return;
+  if (!TTS) return;
+  TTS.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = 'km-KH'; u.rate = 0.85; TTS.speak(u);
+}
+async function loadNews(force){
+  const el = $('#newsList'); if (!el) return;
+  const day = ymd(new Date());
+  const c = LS.get('si-news', null);
+  if (!force && c && c.day === day && c.items?.length){ S.news = c.items; S.newsVia = c.via; renderNews(); return; }
+  el.innerHTML = '<p class="muted">Loading today’s news…</p>';
+  try { const j = await api('/api/news', {}); S.news = j.items; S.newsVia = j.via; LS.set('si-news', { day, items:j.items, via:j.via }); renderNews(); }
+  catch(e){ el.innerHTML = `<p class="empty">${esc(e.text || 'Could not load news. Try Refresh.')}</p>`; }
+}
+function renderNews(){
+  const el = $('#newsList'); if (!el) return;
+  el.innerHTML = (S.news || []).map((n,i) => `<div class="item newsitem" data-news="${i}"><div class="body"><div class="km kmbig"><b>${esc(n.title)}</b></div><div class="muted" style="font-size:.85rem">${esc(n.source || '')}</div></div></div>`).join('') || '<p class="empty">No stories yet.</p>';
+  $('#newsVia').textContent = S.newsVia === 'gemini' ? 'Summaries written by Gemini from today’s web search.' : 'Headlines from Khmer news feeds.';
+}
+function openStory(i){
+  const n = S.news[i]; if (!n) return;
+  S.story = n;
+  const body = n.text && n.text !== n.title ? n.text : '';
+  $('#reader').innerHTML = `<div class="km kmbig" id="rdTitle"><b>${kmHTML(n.title)}</b></div>${body ? `<div class="km" id="rdBody" style="font-size:1.15rem">${kmHTML(body)}</div>` : ''}<div class="inline"><button class="btn" id="rdListen" type="button">🔊 Listen</button><button class="btn ghost" id="rdTrans" type="button">English</button>${n.link ? `<a class="btn ghost" href="${esc(n.link)}" target="_blank" rel="noopener" style="text-decoration:none">Full article</a>` : ''}</div><div id="rdEn" class="muted"></div><p class="muted" style="margin:0;font-size:.85rem">Tap any word for its meaning.</p>`;
+  $('#wordBox').hidden = true;
+  $('#readerCard').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+async function wordInfo(w){
+  const box = $('#wordBox'); box.hidden = false; box.innerHTML = `<div class="body"><span class="km kmbig">${esc(w)}</span> <span class="muted">…</span></div>`;
+  const cache = LS.get('si-kmwords', {});
+  let info = cache[w];
+  if (!info){
+    try {
+      const ctx = (S.story?.title || '') + ' ' + (S.story?.text || '');
+      info = JSON.parse(await aiText(`Khmer word: "${w}". It appears in: "${ctx.slice(0,400)}". Reply JSON only: {"roman":"simple romanization","en":"short English meaning in this context"}`, true));
+      cache[w] = info; LS.set('si-kmwords', cache);
+    } catch(e){ box.innerHTML = `<div class="body muted">${esc(e.text || 'Could not look that up.')}</div>`; return; }
+  }
+  const saved = LS.get('si-vocab', []).some(v => v.w === w);
+  box.innerHTML = `<div class="body"><span class="km kmbig"><b>${esc(w)}</b></span> <span class="mono">${esc(info.roman||'')}</span><div>${esc(info.en||'')}</div></div><button class="btn ghost" data-kmsay="${esc(w)}" type="button">🔊</button><button class="btn" data-kmsave="${esc(w)}" type="button" ${saved ? 'disabled' : ''}>${saved ? 'Saved' : 'Save'}</button>`;
+  box._info = info;
+}
+function renderVocab(){
+  const v = LS.get('si-vocab', []);
+  $('#vocabCount').textContent = v.length ? v.length + ' saved' : '';
+  $('#vocabList').innerHTML = v.map(x => `<div class="item"><div class="body"><span class="km kmbig">${esc(x.w)}</span> <span class="mono">${esc(x.roman||'')}</span><div class="muted">${esc(x.en||'')}</div></div><button class="btn ghost" data-kmsay="${esc(x.w)}" type="button">🔊</button><button class="btn danger" data-kmdel="${esc(x.w)}" type="button">✕</button></div>`).join('') || '<p class="empty">Tap a word while reading, then Save.</p>';
+}
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-news],[data-w],[data-kmsay],[data-kmsave],[data-kmdel],#rdListen,#rdTrans,#newsRefresh'); if (!t) return;
+  if (t.dataset.news != null) return openStory(+t.dataset.news);
+  if (t.dataset.w){ document.querySelectorAll('.kmw.on').forEach(x => x.classList.remove('on')); t.classList.add('on'); return wordInfo(t.dataset.w); }
+  if (t.dataset.kmsay) return kmSpeak(t.dataset.kmsay);
+  if (t.dataset.kmsave){ const w = t.dataset.kmsave, info = $('#wordBox')._info || {}; const v = LS.get('si-vocab', []); if (!v.some(x => x.w === w)) v.unshift({ w, roman:info.roman, en:info.en }); LS.set('si-vocab', v); t.textContent = 'Saved'; t.disabled = true; return renderVocab(); }
+  if (t.dataset.kmdel){ LS.set('si-vocab', LS.get('si-vocab', []).filter(x => x.w !== t.dataset.kmdel)); return renderVocab(); }
+  if (t.id === 'newsRefresh') return loadNews(true);
+  if (t.id === 'rdListen'){ unlockSpeech(); t.disabled = true; await kmSpeak([S.story.title, S.story.text].filter(Boolean).join('. ')); t.disabled = false; return; }
+  if (t.id === 'rdTrans'){ const out = $('#rdEn'); out.textContent = 'Translating…'; try { out.textContent = await aiText(`Translate this Khmer news text to plain English, 2-4 sentences, no commentary:\n${S.story.title}\n${S.story.text || ''}`); } catch(err){ out.textContent = err.text || 'Could not translate.'; } }
+});
+
 try { const v = localStorage.getItem('si-view'); if (v && document.querySelector(`[data-view="${v}"]`)) show(v); } catch(e){}
 render();
 /* ---------- backend: Netlify functions (Supabase + Gemini), PIN-protected ---------- */
