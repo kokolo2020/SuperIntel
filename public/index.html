@@ -130,6 +130,11 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
       <div class="voice"><select id="voiceSel" aria-label="Voice"></select><button class="btn ghost" id="speakBtn" type="button">▶ Play</button><button class="btn ghost" id="stopBtn" type="button">■ Stop</button><label style="display:flex;gap:6px;align-items:center;font-size:.9rem"><input type="checkbox" id="autoSpeak" checked style="width:auto"> Read aloud</label></div>
       <div id="briefOut" class="ai-out muted">Tap “Brief me” for a short summary of today's duty, coverage gaps, tasks and appointments.</div>
     </div>
+    <div class="card" id="voiceCard">
+      <div class="row"><h2>Voice mode</h2><button class="btn" id="vToggle" type="button">Start voice mode</button></div>
+      <div class="voice"><select id="vLang" aria-label="Language"><option value="en-US">English</option><option value="th-TH">ไทย (Thai)</option></select><button class="btn ghost" id="vTalk" type="button" hidden>🎤 Talk now</button></div>
+      <p class="muted" id="vStatus" style="margin:0">Say “Hey SI” and the assistant greets you, then asks what you need. It listens while this page is open on screen.</p>
+    </div>
     <div class="card" id="nlCard">
       <h2>Quick add</h2>
       <form id="nlForm" class="inline"><input id="nlIn" autocomplete="off" placeholder="PT with View Thursday 11am"><button class="btn" type="submit">Add</button></form>
@@ -539,6 +544,119 @@ $('#sumBtn').onclick = async () => {
   catch(e){ out.textContent = e.text || copyFor(e.code); }
   finally { btn.disabled = false; }
 };
+
+/* ---------- voice mode: "Hey SI" -> greeting -> conversation ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const VOICE_NAME = 'Koko';
+const WAKE = /\b(hey|hi|hay|hello|okay|ok)[\s,.]*(s\.?\s?i\.?|sigh|sy|cy|sai|psi|see\s?eye)\b|super\s?intelligence/i;
+const END_RX = /\b(that'?s all|that is all|stop|goodbye|good bye|bye|no thanks|nothing else|never mind|cancel)\b/i;
+const YES_RX = /\b(yes|yeah|yep|yup|sure|okay|ok|save|do it|correct|right)\b|ใช่|ได้|ตกลง|บันทึก/i;
+function setVStatus(t){ const e = $('#vStatus'); if (e) e.textContent = t; }
+function listenOnce(ms = 9000){
+  return new Promise(res => {
+    if (!SR){ S.vErr = 'unsupported'; res(null); return; }
+    const r = new SR(); r.lang = $('#vLang').value; r.interimResults = false; r.maxAlternatives = 3; r.continuous = false;
+    let done = false, got = null;
+    const fin = v => { if (done) return; done = true; clearTimeout(t); try { r.stop(); } catch(e){} res(v); };
+    const t = setTimeout(() => fin(got), ms);
+    r.onresult = e => { const a = [...e.results[0]].map(x => x.transcript); got = { text: a[0], alts: a }; fin(got); };
+    r.onerror = e => { S.vErr = e.error; fin(null); };
+    r.onend = () => fin(got);
+    try { r.start(); } catch(e){ S.vErr = 'start'; fin(null); }
+  });
+}
+function browserSay(text){
+  return new Promise(res => {
+    if (!TTS){ res(); return; }
+    TTS.cancel();
+    const clean = text.replace(/^[•\-*]\s*/gm, '');
+    const u = new SpeechSynthesisUtterance(clean);
+    const v = TTS.getVoices().find(x => x.name === $('#voiceSel').value) || TTS.getVoices().find(x => FEMALE.test(x.name) && /^en/i.test(x.lang));
+    if (v){ u.voice = v; u.lang = v.lang; } else u.lang = $('#vLang').value;
+    u.rate = 0.95; u.onend = () => res(); u.onerror = () => res();
+    TTS.speak(u);
+  });
+}
+async function say(text){
+  if (!text) return;
+  if ($('#voiceSel').value === '__gemini'){
+    try {
+      const j = await api('/api/ai', { tts:true, text });
+      const a = S.audio || (S.audio = new Audio());
+      await new Promise((res, rej) => { a.onended = res; a.onerror = rej; a.src = URL.createObjectURL(pcmToWav(j.audio, j.rate || 24000)); a.play().catch(rej); });
+      return;
+    } catch(e){}
+  }
+  await browserSay(text);
+}
+const aiText = async (prompt, json) => { const { text } = await api('/api/ai', { prompt, json: !!json }); return text; };
+function voiceContext(){
+  const tasks = S.tasks.filter(t=>!t.done).map(t=>`- ${t.title}${t.due?` (due ${t.due})`:''}`).join('\n') || 'none';
+  const appts = S.appts.filter(a=>a.date>=TODAY && a.date<=addDays(TODAY,7)).sort(apSort).map(a=>`- ${a.date} ${a.time||''} ${a.title}${a.person?' for '+a.person:''}${a.place?' at '+a.place:''}`).join('\n') || 'none';
+  return `Today is ${longDate(TODAY)} (${TODAY}), time ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}.\nROSTERS (today + next 6 days):\n${snapshotText(TODAY,7)}\nOPEN TASKS:\n${tasks}\nAPPOINTMENTS (next 7 days):\n${appts}`;
+}
+const langHint = () => $('#vLang').value === 'th-TH' ? 'Speak and reply in Thai.' : 'Speak and reply in English.';
+async function converse(){
+  S.vBusy = true; $('#vTalk').hidden = true;
+  try {
+    setVStatus('Talking…');
+    const g = await aiText(`You are SI, a warm, friendly voice assistant on a family care dashboard. You are speaking out loud to ${VOICE_NAME}. ${langHint()}\nGreet them naturally for this time of day, then in two or three short spoken sentences say who is on duty today and anything due or coming up, then ask what they need help with. Say times in words, no digits like 08:00, no markdown, no bullets.\n\n${voiceContext()}`);
+    await say(g);
+    let idle = 0;
+    while (S.voiceOn){
+      setVStatus('Listening… say “that’s all” to stop.');
+      const h = await listenOnce(10000);
+      if (!h){ if (S.vErr === 'not-allowed' || S.vErr === 'service-not-allowed'){ break; } if (++idle >= 2){ await say(`I'll be here if you need me. Just say Hey S I.`); break; } continue; }
+      idle = 0;
+      const said = h.text; setVStatus(`You: “${said}”`);
+      if (END_RX.test(said)){ await say('Okay. Talk to you later!'); break; }
+      let r;
+      try { r = JSON.parse(await aiText(`You are SI, a warm voice assistant on a family care dashboard. ${langHint()}\nThe user said: "${said}"\nDecide: if they want to ADD or CHANGE something (a task, appointment, roster entry or visit note) reply {"kind":"add"}. If they are finished reply {"kind":"end","reply":"short friendly goodbye"}. Otherwise answer from the data in at most two short spoken sentences: {"kind":"answer","reply":"..."}. Say times in words. No markdown. Reply with JSON only.\n\n${voiceContext()}`, true)); }
+      catch(e){ await say('Sorry, I did not catch that. Could you say it again?'); continue; }
+      if (r.kind === 'end'){ await say(r.reply || 'Okay. Talk to you later!'); break; }
+      if (r.kind === 'answer'){ await say((r.reply || 'I am not sure.') + ' Anything else?'); continue; }
+      // add: reuse Quick add (parse -> preview -> confirm)
+      $('#nlIn').value = said; $('#nlForm').requestSubmit();
+      let prev = null;
+      for (let i = 0; i < 40 && !prev; i++){ await new Promise(r => setTimeout(r, 250)); if ($('#nlSave')) prev = $('#nlPrev .preview > div')?.textContent; }
+      if (!prev){ await say('Sorry, I could not work that out. Try saying it differently.'); continue; }
+      await say(`I understood: ${prev}. Shall I save it?`);
+      const c = await listenOnce(8000);
+      if (c && YES_RX.test(c.alts.join(' '))){ $('#nlSave')?.click(); await say('Done. Anything else?'); }
+      else { $('#nlDrop')?.click(); await say('Okay, I did not save it. Anything else?'); }
+    }
+  } catch(e){ setVStatus('Voice mode hit a problem: ' + (e.text || e.message || 'try again')); }
+  S.vBusy = false;
+  if (S.voiceOn) setVStatus('Listening for “Hey SI”…');
+}
+async function wakeLoop(){
+  while (S.voiceOn){
+    if (S.vBusy){ await new Promise(r => setTimeout(r, 400)); continue; }
+    setVStatus('Listening for “Hey SI”…'); $('#vTalk').hidden = false;
+    const h = await listenOnce(30000);
+    if (S.vErr === 'not-allowed' || S.vErr === 'service-not-allowed'){ setVStatus('Microphone or speech recognition is blocked. On iPad: Settings → Safari → Microphone → Allow, and turn on Settings → Siri → Dictation.'); stopVoice(); return; }
+    if (S.vErr === 'unsupported'){ setVStatus('This browser does not support voice recognition. Use Safari or Chrome.'); stopVoice(); return; }
+    if (h && WAKE.test(h.alts.join(' '))) await converse();
+    else await new Promise(r => setTimeout(r, 250));
+  }
+}
+function startVoice(){
+  unlockSpeech(); S.voiceOn = true; S.vErr = null; $('#vToggle').textContent = 'Stop voice mode';
+  wakeLoop();
+}
+function stopVoice(){
+  S.voiceOn = false; $('#vToggle').textContent = 'Start voice mode'; $('#vTalk').hidden = true;
+  try { TTS && TTS.cancel(); S.audio && S.audio.pause(); } catch(e){}
+}
+$('#vToggle').addEventListener('click', () => S.voiceOn ? (stopVoice(), setVStatus('Voice mode is off.')) : startVoice());
+$('#vTalk').addEventListener('click', () => { unlockSpeech(); if (!S.vBusy) converse(); });
+if (/[?&]voice=1/.test(location.search)){
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center';
+  ov.innerHTML = '<h1>Super Intelligence</h1><p class="muted">Tap to wake me up</p><button class="btn" id="vGo" type="button" style="font-size:1.4rem;padding:18px 36px">🎤 Start</button>';
+  document.body.appendChild(ov);
+  $('#vGo').addEventListener('click', () => { ov.remove(); S.vBusy = true; startVoice(); converse(); });
+}
 
 /* ---------- boot ---------- */
 try { const v = localStorage.getItem('si-view'); if (v && document.querySelector(`[data-view="${v}"]`)) show(v); } catch(e){}
