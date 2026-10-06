@@ -114,6 +114,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
     <button data-v="tasks" aria-selected="false">Tasks</button>
     <button data-v="appts" aria-selected="false">Appointments</button>
     <button data-v="notes" aria-selected="false">Visit notes</button>
+    <button data-v="tools" aria-selected="false">Tools</button>
   </nav>
   <div id="dbBanner" class="banner" hidden>Can't reach the database right now. Check your connection, then pull to refresh.</div>
 
@@ -232,6 +233,41 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
     <div class="card"><h2>All notes</h2><div id="noteList" class="list"></div></div>
    </div>
   </section>
+
+  <!-- TOOLS -->
+  <section data-view="tools" class="cols" hidden>
+   <div class="col">
+    <div class="card" id="alarmCard">
+      <h2>Alarms &amp; timers</h2>
+      <form id="alarmForm" class="grid">
+        <input id="alTime" type="time" required aria-label="Alarm time">
+        <input id="alLabel" placeholder="Label (e.g. Medication)">
+        <select id="alRep"><option value="once">Once</option><option value="daily">Every day</option></select>
+        <button class="btn" type="submit">Add alarm</button>
+      </form>
+      <div id="alList" class="list"></div>
+      <div class="inline"><input id="tmMin" type="number" min="1" max="600" inputmode="numeric" placeholder="Timer, minutes"><button class="btn ghost" id="tmGo" type="button">Start timer</button></div>
+      <div id="tmList" class="list"></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:.9rem"><input type="checkbox" id="wakeLock" style="width:auto"> Keep screen on so alarms can ring</label>
+      <p class="muted" style="margin:0;font-size:.85rem">Alarms ring only while this page is open. Tap 📅 to add an iPad Calendar alert that also works when the app is closed.</p>
+    </div>
+   </div>
+   <div class="col">
+    <div class="card" id="musicCard">
+      <h2>YouTube music</h2>
+      <div class="inline"><input id="ytIn" placeholder="Paste a YouTube or YouTube Music link"><button class="btn" id="ytPlay" type="button">Play</button></div>
+      <div class="inline"><button class="btn ghost" id="ytPause" type="button">Pause</button><button class="btn ghost" id="ytNext" type="button">Next</button><button class="btn ghost" id="ytSave" type="button">Save favorite</button></div>
+      <div id="ytFavs" class="list"></div>
+      <p class="muted" style="margin:0;font-size:.85rem">Say “play jazz” in voice mode to search (needs a YouTube API key in Netlify). Saved favorites always work.</p>
+    </div>
+    <div class="card" id="stockCard">
+      <div class="row"><h2>US stocks</h2><button class="btn ghost" id="stRefresh" type="button">Refresh</button></div>
+      <form id="stForm" class="inline"><input id="stIn" placeholder="Add ticker, e.g. AMZN" autocapitalize="characters" autocomplete="off"><button class="btn" type="submit">Add</button></form>
+      <div id="stList" class="list"></div>
+      <p class="muted" style="margin:0;font-size:.85rem">Delayed prices for information only, not advice.</p>
+    </div>
+   </div>
+  </section>
 </div>
 
 <script>
@@ -295,6 +331,7 @@ function render(){
     $('#todayAppts').innerHTML = ap.length ? ap.map(apptItem).join('') : '<p class="empty">No appointments in the next week.</p>';
   }
   if (S.view === 'cal') renderCal();
+  if (S.view === 'tools'){ renderTools(); if (!S.quotesAt || Date.now() - S.quotesAt > 60000){ S.quotesAt = Date.now(); refreshStocks(); } }
   if (S.view === 'tasks'){
     const open = S.tasks.filter(t=>!t.done).sort((a,b)=>(b.pri==='high')-(a.pri==='high') || (a.due||'9').localeCompare(b.due||'9'));
     const done = S.tasks.filter(t=>t.done);
@@ -618,7 +655,7 @@ const langHint = () => $('#vLang').value === 'th-TH' ? 'Speak and reply in Thai.
 async function converse(){
   S.vBusy = true; $('#vTalk').hidden = true;
   try {
-    setVStatus('Talking…'); await getWeather();
+    setVStatus('Talking…'); pauseMusic(); await getWeather();
     const g = await aiText(`You are SI, a warm, friendly voice assistant on a family care dashboard. You are speaking out loud to ${VOICE_NAME}. ${langHint()}\nGreet them naturally for this time of day, then in two or three short spoken sentences say who is on duty today, the weather, and anything due or coming up (mention an umbrella if rain is likely), then ask what they need help with. Say times in words, no digits like 08:00, no markdown, no bullets.\n\n${voiceContext()}`);
     await say(g);
     let idle = 0;
@@ -630,9 +667,13 @@ async function converse(){
       const said = h.text; setVStatus(`You: “${said}”`);
       if (END_RX.test(said)){ await say('Okay. Talk to you later!'); break; }
       let r;
-      try { r = JSON.parse(await aiText(`You are SI, a warm voice assistant on a family care dashboard. ${langHint()}\nThe user said: "${said}"\nDecide: if they want to ADD or CHANGE something (a task, appointment, roster entry or visit note) reply {"kind":"add"}. If they are finished reply {"kind":"end","reply":"short friendly goodbye"}. Otherwise answer from the data in at most two short spoken sentences: {"kind":"answer","reply":"..."}. Say times in words. No markdown. Reply with JSON only.\n\n${voiceContext()}`, true)); }
+      try { r = JSON.parse(await aiText(`You are SI, a warm voice assistant on a family care dashboard. ${langHint()}\nThe user said: "${said}"\nDecide: if they want to ADD or CHANGE something (a task, appointment, roster entry or visit note) reply {"kind":"add"}. If they explicitly ask for an ALARM or to be woken at a clock time reply {"kind":"alarm","time":"HH:MM","label":"short label"}. If they ask for a countdown TIMER reply {"kind":"timer","minutes":number,"label":""}. If they ask to play, pause, resume, stop or skip MUSIC reply {"kind":"music","action":"play|pause|resume|next|stop","query":"what to search for, or empty"}. If they ask about US STOCK prices or the stock market reply {"kind":"stocks","symbols":["TICKER"]} using real US tickers (map company names to tickers; use [] for the general market or watchlist). A reminder about a task or appointment is "add", not an alarm. If they are finished reply {"kind":"end","reply":"short friendly goodbye"}. Otherwise answer from the data in at most two short spoken sentences: {"kind":"answer","reply":"..."}. Say times in words. No markdown. Reply with JSON only.\n\n${voiceContext()}`, true)); }
       catch(e){ await say('Sorry, I did not catch that. Could you say it again?'); continue; }
       if (r.kind === 'end'){ await say(r.reply || 'Okay. Talk to you later!'); break; }
+      if (r.kind === 'alarm' && /^\d{1,2}:\d{2}$/.test(r.time || '')){ const [hh, mm] = r.time.split(':'); const hm = `${pad(+hh)}:${mm}`; addAlarm(hm, r.label || ''); await say(`Alarm set for ${t12(hm)}${r.label ? ', ' + r.label : ''}. It rings while this page is open. Anything else?`); continue; }
+      if (r.kind === 'timer' && +r.minutes > 0){ addTimer(Math.min(+r.minutes, 600), r.label || ''); await say(`Timer set for ${Math.min(+r.minutes, 600)} minutes. Anything else?`); continue; }
+      if (r.kind === 'music'){ await musicCommand(r); continue; }
+      if (r.kind === 'stocks'){ await stocksAnswer(said, r.symbols || []); continue; }
       if (r.kind === 'answer'){ await say((r.reply || 'I am not sure.') + ' Anything else?'); continue; }
       // add: reuse Quick add (parse -> preview -> confirm)
       $('#nlIn').value = said; $('#nlForm').requestSubmit();
@@ -645,7 +686,7 @@ async function converse(){
       else { $('#nlDrop')?.click(); await say('Okay, I did not save it. Anything else?'); }
     }
   } catch(e){ setVStatus('Voice mode hit a problem: ' + (e.text || e.message || 'try again')); }
-  S.vBusy = false;
+  S.vBusy = false; resumeMusic();
   if (S.voiceOn) setVStatus('Listening for “Hey SI”…');
 }
 async function wakeLoop(){
@@ -676,6 +717,184 @@ if (/[?&]voice=1/.test(location.search)){
   document.body.appendChild(ov);
   $('#vGo').addEventListener('click', () => { ov.remove(); S.vBusy = true; startVoice(); converse(); });
 }
+
+/* ---------- tools: alarms, timers, music, US stocks ---------- */
+const LS = { get(k, d){ try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch(e){ return d; } }, set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} } };
+S.alarms = LS.get('si-alarms', []); S.timers = LS.get('si-timers', []);
+S.music = LS.get('si-music', { favs: [], cur: null });
+S.watch = LS.get('si-watch', ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'TSLA']);
+const uid = () => Math.random().toString(36).slice(2, 9);
+const t12 = hhmm => { const [h, m] = hhmm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${pad(m)} ${h < 12 ? 'AM' : 'PM'}`; };
+function saveAlarms(){ LS.set('si-alarms', S.alarms); LS.set('si-timers', S.timers); renderTools(); }
+function addAlarm(time, label, rep = 'once'){ S.alarms.push({ id: uid(), time, label: label || '', rep, on: true, last: '' }); saveAlarms(); }
+function addTimer(min, label){ S.timers.push({ id: uid(), end: Date.now() + min * 60000, label: label || '' }); saveAlarms(); }
+
+/* alarm ringing */
+function beep(){
+  try {
+    const ctx = S.actx || (S.actx = new (window.AudioContext || window.webkitAudioContext)());
+    if (ctx.state === 'suspended') ctx.resume();
+    const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+    o.type = 'sine'; o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + 0.4);
+  } catch(e){}
+}
+let ringing = null;
+function stopRing(){
+  if (!ringing) return;
+  ringing.ov?.remove(); ringing = null;
+  try { TTS && TTS.cancel(); S.audio && S.audio.pause(); } catch(e){}
+}
+async function ring(title, label, msg){
+  if (ringing) return;
+  const my = ringing = {};
+  pauseMusic();
+  const ov = my.ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center';
+  ov.innerHTML = `<h1>${esc(title)}</h1><p style="font-size:1.3rem;margin:0">${esc(label)}</p><div class="inline"><button class="btn" id="rgStop" type="button" style="font-size:1.2rem;padding:14px 28px">Stop</button><button class="btn ghost" id="rgSnooze" type="button" style="font-size:1.2rem;padding:14px 28px">Snooze 5 min</button></div>`;
+  document.body.appendChild(ov);
+  $('#rgStop').onclick = stopRing;
+  $('#rgSnooze').onclick = () => { stopRing(); addTimer(5, 'Snooze: ' + label); };
+  for (let i = 0; i < 8 && ringing === my; i++){
+    for (let j = 0; j < 3 && ringing === my; j++){ beep(); await new Promise(r => setTimeout(r, 700)); }
+    if (ringing === my) await say(msg);
+  }
+  if (ringing === my) stopRing();
+}
+setInterval(() => {
+  const now = new Date(), hm = `${pad(now.getHours())}:${pad(now.getMinutes())}`, key = ymd(now) + hm;
+  for (const a of S.alarms){
+    if (a.on && a.time === hm && a.last !== key){
+      a.last = key; if (a.rep === 'once') a.on = false; saveAlarms();
+      ring('⏰ ' + t12(a.time), a.label || 'Alarm', `It's ${t12(a.time).replace(':', ' ')}. ${a.label || 'Time to get up.'}`);
+    }
+  }
+  const due = S.timers.filter(t => t.end <= Date.now());
+  if (due.length){ S.timers = S.timers.filter(t => t.end > Date.now()); saveAlarms(); ring('⏱ Timer done', due[0].label || 'Time is up', `Your timer is done. ${due[0].label || ''}`); }
+  if (S.view === 'tools') renderTimers();
+}, 1000);
+async function setWake(on){ try { if (on) S.wl = await navigator.wakeLock.request('screen'); else { await S.wl?.release(); S.wl = null; } } catch(e){} }
+document.addEventListener('visibilitychange', () => { if (!document.hidden && $('#wakeLock')?.checked) setWake(true); });
+function downloadIcs(a){
+  const d = new Date(), [h, m] = a.time.split(':').map(Number), start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m);
+  if (start < d) start.setDate(start.getDate() + 1);
+  const f = x => `${x.getFullYear()}${pad(x.getMonth() + 1)}${pad(x.getDate())}T${pad(x.getHours())}${pad(x.getMinutes())}00`;
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//SuperIntel//EN', 'BEGIN:VEVENT', `UID:${a.id}@superintel`, `DTSTAMP:${f(new Date())}`, `DTSTART:${f(start)}`, `DTEND:${f(new Date(start.getTime() + 600000))}`, a.rep === 'daily' ? 'RRULE:FREQ=DAILY' : '', `SUMMARY:${(a.label || 'Alarm').replace(/[,;\n]/g, ' ')}`, 'BEGIN:VALARM', 'ACTION:AUDIO', 'TRIGGER:PT0S', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].filter(Boolean).join('\r\n');
+  const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' })); el.download = 'alarm.ics';
+  document.body.appendChild(el); el.click(); el.remove();
+}
+
+/* YouTube music (embedded player, docked bottom-right) */
+function parseYT(u){
+  u = (u || '').trim(); let m;
+  if ((m = u.match(/[?&]list=([\w-]+)/))) return { list: m[1] };
+  if ((m = u.match(/(?:youtu\.be\/|[?&]v=|embed\/|shorts\/)([\w-]{11})/))) return { id: m[1] };
+  if (/^[\w-]{11}$/.test(u)) return { id: u };
+  return null;
+}
+const ytLoad = () => new Promise(res => {
+  if (window.YT && YT.Player) return res();
+  window.onYouTubeIframeAPIReady = () => res();
+  const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; document.head.appendChild(s);
+});
+async function playYT(src, title){
+  await ytLoad();
+  S.music.cur = { ...src, title: title || S.music.cur?.title || '' }; LS.set('si-music', S.music);
+  let dock = $('#ytDock');
+  if (!dock){
+    dock = document.createElement('div'); dock.id = 'ytDock';
+    dock.style.cssText = 'position:fixed;right:12px;bottom:12px;width:240px;z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px;box-shadow:0 4px 18px rgba(0,0,0,.35)';
+    dock.innerHTML = '<div class="row" style="padding:2px 4px"><span class="muted" id="ytTitle" style="font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px"></span><button class="btn danger" id="ytClose" type="button" aria-label="Close player">✕</button></div><div id="ytMount"></div>';
+    document.body.appendChild(dock);
+    $('#ytClose').onclick = () => { try { S.yt?.stopVideo(); S.yt?.destroy(); } catch(e){} S.yt = null; dock.remove(); };
+  }
+  $('#ytTitle').textContent = S.music.cur.title || 'Now playing';
+  const pv = { playsinline: 1, rel: 0, ...(src.list ? { listType: 'playlist', list: src.list } : {}) };
+  if (!S.yt){
+    S.yt = new YT.Player('ytMount', { width: '228', height: '128', videoId: src.id, playerVars: pv, events: { onReady: e => { try { e.target.playVideo(); } catch(x){} } } });
+  } else if (src.list) S.yt.loadPlaylist({ list: src.list, listType: 'playlist' });
+  else S.yt.loadVideoById(src.id);
+  S.musicPaused = false;
+}
+const musicState = () => { try { return S.yt?.getPlayerState?.(); } catch(e){ return -1; } };
+function pauseMusic(){ try { if (musicState() === 1){ S.yt.pauseVideo(); S.musicPaused = true; } } catch(e){} }
+function resumeMusic(){ try { if (S.musicPaused){ S.yt.playVideo(); S.musicPaused = false; } } catch(e){} }
+async function musicCommand(r){
+  const a = r.action || 'play';
+  if (a === 'pause' || a === 'stop'){ try { a === 'stop' ? S.yt?.stopVideo() : S.yt?.pauseVideo(); } catch(e){} S.musicPaused = false; await say('Okay.'); return; }
+  if (a === 'next'){ try { S.yt?.nextVideo(); } catch(e){} await say('Next.'); return; }
+  if ((a === 'resume' || a === 'play') && !r.query){
+    if (S.yt){ try { S.yt.playVideo(); } catch(e){} S.musicPaused = false; await say('Playing.'); return; }
+    const f = S.music.cur || S.music.favs[0];
+    if (f){ await playYT(f, f.title); await say('Playing your music. If it does not start, tap play on the player.'); return; }
+    await say('I have no saved music yet. Open the Tools tab and paste a YouTube link.'); return;
+  }
+  try {
+    const j = await api('/api/yt', { q: r.query });
+    await playYT({ id: j.id }, j.title);
+    await say(`Playing ${j.title}. If it does not start, tap play on the player.`);
+  } catch(e){
+    await say('I cannot search YouTube yet. Paste a link in the Tools tab, or say play my music for a saved favorite.');
+  }
+}
+
+/* US stocks (Yahoo Finance via /api/stocks) */
+async function getQuotes(syms){ const j = await api('/api/stocks', { symbols: syms }); return j.quotes || []; }
+async function refreshStocks(){
+  const el = $('#stList'); if (!el) return;
+  if (!S.quotes) el.innerHTML = '<p class="muted">Loading…</p>';
+  try { S.quotes = await getQuotes(S.watch); renderStocks(); }
+  catch(e){ el.innerHTML = `<p class="empty">${esc(e.text || 'Could not load prices. Try Refresh.')}</p>`; }
+}
+function renderStocks(){
+  const el = $('#stList'); if (!el || !S.quotes) return;
+  el.innerHTML = S.quotes.map(q => q.error
+    ? `<div class="item"><div class="body"><b>${esc(q.symbol)}</b> <span class="muted">unavailable</span></div><button class="btn danger" data-stdel="${esc(q.symbol)}" type="button">Remove</button></div>`
+    : `<div class="item"><div class="body"><b>${esc(q.symbol)}</b> <span class="muted" style="font-size:.85rem">${esc(q.name || '')}</span></div><div class="mono" style="text-align:right">${q.price.toFixed(2)}<br><span style="color:var(${q.pct >= 0 ? '--ok' : '--warn'})">${q.pct >= 0 ? '▲' : '▼'} ${Math.abs(q.pct).toFixed(2)}%</span></div><button class="btn danger" data-stdel="${esc(q.symbol)}" type="button" aria-label="Remove">✕</button></div>`).join('') || '<p class="empty">No tickers yet.</p>';
+}
+async function stocksAnswer(said, syms){
+  let list = (syms || []).filter(s => /^[A-Za-z.\-^]{1,10}$/.test(s)).map(s => s.toUpperCase());
+  if (!list.length) list = S.watch;
+  let qs; try { qs = await getQuotes(list.slice(0, 8)); } catch(e){ await say('Sorry, I could not get stock prices right now.'); return; }
+  const data = qs.map(q => q.error ? `${q.symbol}: unavailable` : `${q.symbol} (${q.name}): ${q.price.toFixed(2)} ${q.currency}, ${q.pct >= 0 ? 'up' : 'down'} ${Math.abs(q.pct).toFixed(2)} percent from the previous close`).join('\n');
+  const reply = await aiText(`You are SI, a warm voice assistant. ${langHint()} The user asked: "${said}". Using only this delayed market data, answer in two or three short spoken sentences. Give facts only and do not recommend buying or selling. Say numbers naturally.\n\n${data}`);
+  await say(reply + ' Anything else?');
+}
+
+/* tools tab rendering + events */
+function renderTimers(){
+  const el = $('#tmList'); if (!el) return;
+  el.innerHTML = S.timers.map(t => { const s = Math.max(0, Math.round((t.end - Date.now()) / 1000)); return `<div class="item"><div class="body">⏱ <b class="mono">${Math.floor(s / 60)}:${pad(s % 60)}</b> ${esc(t.label)}</div><button class="btn danger" data-tmdel="${t.id}" type="button">Cancel</button></div>`; }).join('');
+}
+function renderTools(){
+  if (!$('#alList')) return;
+  const al = S.alarms.slice().sort((a, b) => a.time.localeCompare(b.time)).map(a => `<div class="item"><div class="body"><div class="title"><b class="mono">${esc(t12(a.time))}</b> ${esc(a.label)}</div><span class="pill">${a.rep === 'daily' ? 'Every day' : 'Once'}</span></div><input type="checkbox" data-al="${a.id}" ${a.on ? 'checked' : ''} aria-label="Alarm on"><button class="btn ghost" data-ics="${a.id}" type="button" aria-label="Add to iPad Calendar">📅</button><button class="btn danger" data-aldel="${a.id}" type="button">Remove</button></div>`).join('');
+  $('#alList').innerHTML = al || '<p class="empty">No alarms yet.</p>';
+  renderTimers();
+  $('#ytFavs').innerHTML = S.music.favs.map((f, i) => `<div class="item"><div class="body">${esc(f.title || 'Saved music')}</div><button class="btn ghost" data-fav="${i}" type="button" aria-label="Play">▶</button><button class="btn danger" data-favdel="${i}" type="button">Remove</button></div>`).join('') || '<p class="empty">No favorites yet. Paste a link, tap Play, then Save favorite.</p>';
+  renderStocks();
+}
+$('#alarmForm').addEventListener('submit', e => { e.preventDefault(); beep(); addAlarm($('#alTime').value, $('#alLabel').value.trim(), $('#alRep').value); e.target.reset(); });
+$('#tmGo').addEventListener('click', () => { beep(); const m = parseInt($('#tmMin').value, 10); if (m > 0){ addTimer(Math.min(m, 600), ''); $('#tmMin').value = ''; } });
+$('#wakeLock').addEventListener('change', e => setWake(e.target.checked));
+$('#ytPlay').addEventListener('click', async () => { const s = parseYT($('#ytIn').value); if (!s){ $('#ytIn').value = ''; $('#ytIn').placeholder = 'That does not look like a YouTube link'; return; } await playYT(s, 'YouTube'); });
+$('#ytPause').addEventListener('click', () => { try { musicState() === 1 ? S.yt.pauseVideo() : S.yt?.playVideo(); } catch(e){} });
+$('#ytNext').addEventListener('click', () => { try { S.yt?.nextVideo(); } catch(e){} });
+$('#ytSave').addEventListener('click', () => { const c = S.music.cur; if (!c) return; if (!S.music.favs.some(f => (f.id && f.id === c.id) || (f.list && f.list === c.list))){ S.music.favs.push({ id: c.id, list: c.list, title: c.title || 'Saved music' }); LS.set('si-music', S.music); renderTools(); } });
+$('#stForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#stIn').value.trim().toUpperCase(); if (/^[A-Z.\-^]{1,10}$/.test(v) && !S.watch.includes(v) && S.watch.length < 12){ S.watch.push(v); LS.set('si-watch', S.watch); $('#stIn').value = ''; refreshStocks(); } });
+$('#stRefresh').addEventListener('click', refreshStocks);
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-aldel],[data-ics],[data-tmdel],[data-fav],[data-favdel],[data-stdel]'); if (!t) return;
+  const d = t.dataset;
+  if (d.aldel){ S.alarms = S.alarms.filter(a => a.id !== d.aldel); saveAlarms(); }
+  else if (d.ics){ const a = S.alarms.find(a => a.id === d.ics); if (a) downloadIcs(a); }
+  else if (d.tmdel){ S.timers = S.timers.filter(x => x.id !== d.tmdel); saveAlarms(); }
+  else if (d.fav){ const f = S.music.favs[+d.fav]; if (f) playYT(f, f.title); }
+  else if (d.favdel){ S.music.favs.splice(+d.favdel, 1); LS.set('si-music', S.music); renderTools(); }
+  else if (d.stdel){ S.watch = S.watch.filter(x => x !== d.stdel); LS.set('si-watch', S.watch); S.quotes = (S.quotes || []).filter(q => q.symbol !== d.stdel); renderStocks(); }
+});
+document.addEventListener('change', e => { const id = e.target.dataset?.al; if (!id) return; const a = S.alarms.find(x => x.id === id); if (a){ a.on = e.target.checked; a.last = ''; saveAlarms(); } });
 
 /* ---------- boot ---------- */
 try { const v = localStorage.getItem('si-view'); if (v && document.querySelector(`[data-view="${v}"]`)) show(v); } catch(e){}
