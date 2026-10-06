@@ -12,7 +12,7 @@ export default async (req) => {
 
   const key = process.env.GEMINI_API_KEY;
   if (!key) return json({ error: "GEMINI_API_KEY not set" }, 500);
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
   let b;
   try { b = await req.json(); } catch { return json({ error: "Bad JSON" }, 400); }
@@ -24,7 +24,7 @@ export default async (req) => {
     headers: { "content-type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { thinkingConfig: { thinkingBudget: 0 }, ...(b.json ? { responseMimeType: "application/json" } : {}) },
+      generationConfig: b.json ? { responseMimeType: "application/json" } : {},
     }),
   });
   const j = await r.json().catch(() => ({}));
