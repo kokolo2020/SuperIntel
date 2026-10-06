@@ -421,8 +421,9 @@ $('#briefBtn').onclick = async () => {
   btn.disabled = true; out.classList.remove('muted'); out.textContent = 'Thinking…';
   const tasks = S.tasks.filter(t=>!t.done).map(t=>`- ${t.title}${t.due?` (due ${t.due})`:''}${t.pri==='high'?' [high]':''}`).join('\n') || 'none';
   const appts = S.appts.filter(a=>a.date>=TODAY && a.date<=addDays(TODAY,7)).sort(apSort).map(a=>`- ${a.date} ${a.time||''} ${a.title}${a.person?' for '+a.person:''}${a.place?' at '+a.place:''}`).join('\n') || 'none';
+  await getWeather();
   const prompt = `You are a warm, friendly home-care coordinator speaking out loud to the family. Today is ${longDate(TODAY)} (${TODAY}).
-Write a short daily briefing as 4-7 plain-text bullets starting with "• ". Cover: who is on duty today on each roster, any day in the next 3 days with nobody scheduled on a roster, overdue or due-today tasks, appointments coming up. Be specific with names and times. Write the way a kind person would say it out loud: natural, short, conversational sentences, with a friendly greeting in the first bullet. Say times in words (for example "nine in the morning"), not 24-hour digits. No headings, no markdown.
+Write a short daily briefing as 4-7 plain-text bullets starting with "• ". Cover: who is on duty today on each roster, any day in the next 3 days with nobody scheduled on a roster, overdue or due-today tasks, appointments coming up. Add one short weather note (suggest an umbrella if rain is likely). Be specific with names and times. Write the way a kind person would say it out loud: natural, short, conversational sentences, with a friendly greeting in the first bullet. Say times in words (for example "nine in the morning"), not 24-hour digits. No headings, no markdown.
 
 ROSTERS (today + next 3 days):
 ${snapshotText(TODAY,4)}
@@ -431,7 +432,10 @@ OPEN TASKS:
 ${tasks}
 
 APPOINTMENTS (next 7 days):
-${appts}`;
+${appts}
+
+WEATHER:
+${S.weather || 'not available'}`;
   unlockSpeech();
   try { const r = await S.sample(prompt, {onText:({text}) => out.textContent = text}); if ($('#autoSpeak').checked) speak(r.text); }
   catch(e){ out.textContent = e.text || copyFor(e.code); }
@@ -545,6 +549,21 @@ $('#sumBtn').onclick = async () => {
   finally { btn.disabled = false; }
 };
 
+/* ---------- weather (Open-Meteo, no key needed) ---------- */
+const WX = { name:'Bangkok', lat:13.7563, lon:100.5018 };
+const WCODE = {0:'clear sky',1:'mostly clear',2:'partly cloudy',3:'overcast',45:'foggy',48:'foggy',51:'light drizzle',53:'drizzle',55:'heavy drizzle',61:'light rain',63:'rain',65:'heavy rain',80:'rain showers',81:'rain showers',82:'heavy rain showers',95:'thunderstorms',96:'thunderstorms with hail',99:'thunderstorms with hail'};
+async function getWeather(){
+  if (S.weather && Date.now() - (S.weatherAt || 0) < 1800000) return S.weather;
+  try {
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${WX.lat}&longitude=${WX.lon}&current=temperature_2m,apparent_temperature,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FBangkok&forecast_days=3`;
+    const j = await (await fetch(u)).json();
+    const c = j.current, d = j.daily;
+    const day = i => `${i===0?'Today':i===1?'Tomorrow':d.time[i]}: ${WCODE[d.weather_code[i]]||'mixed'}, ${Math.round(d.temperature_2m_min[i])} to ${Math.round(d.temperature_2m_max[i])} degrees Celsius, ${d.precipitation_probability_max[i]}% chance of rain`;
+    S.weather = `${WX.name} right now: ${WCODE[c.weather_code]||'mixed'}, ${Math.round(c.temperature_2m)} degrees Celsius (feels like ${Math.round(c.apparent_temperature)}).\n` + [0,1,2].map(day).join('\n');
+    S.weatherAt = Date.now();
+  } catch(e){ S.weather = S.weather || ''; }
+  return S.weather;
+}
 /* ---------- voice mode: "Hey SI" -> greeting -> conversation ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const VOICE_NAME = 'Koko';
@@ -593,14 +612,14 @@ const aiText = async (prompt, json) => { const { text } = await api('/api/ai', {
 function voiceContext(){
   const tasks = S.tasks.filter(t=>!t.done).map(t=>`- ${t.title}${t.due?` (due ${t.due})`:''}`).join('\n') || 'none';
   const appts = S.appts.filter(a=>a.date>=TODAY && a.date<=addDays(TODAY,7)).sort(apSort).map(a=>`- ${a.date} ${a.time||''} ${a.title}${a.person?' for '+a.person:''}${a.place?' at '+a.place:''}`).join('\n') || 'none';
-  return `Today is ${longDate(TODAY)} (${TODAY}), time ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}.\nROSTERS (today + next 6 days):\n${snapshotText(TODAY,7)}\nOPEN TASKS:\n${tasks}\nAPPOINTMENTS (next 7 days):\n${appts}`;
+  return `Today is ${longDate(TODAY)} (${TODAY}), time ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}.\nROSTERS (today + next 6 days):\n${snapshotText(TODAY,7)}\nOPEN TASKS:\n${tasks}\nAPPOINTMENTS (next 7 days):\n${appts}\nWEATHER:\n${S.weather || 'not available'}`;
 }
 const langHint = () => $('#vLang').value === 'th-TH' ? 'Speak and reply in Thai.' : 'Speak and reply in English.';
 async function converse(){
   S.vBusy = true; $('#vTalk').hidden = true;
   try {
-    setVStatus('Talking…');
-    const g = await aiText(`You are SI, a warm, friendly voice assistant on a family care dashboard. You are speaking out loud to ${VOICE_NAME}. ${langHint()}\nGreet them naturally for this time of day, then in two or three short spoken sentences say who is on duty today and anything due or coming up, then ask what they need help with. Say times in words, no digits like 08:00, no markdown, no bullets.\n\n${voiceContext()}`);
+    setVStatus('Talking…'); await getWeather();
+    const g = await aiText(`You are SI, a warm, friendly voice assistant on a family care dashboard. You are speaking out loud to ${VOICE_NAME}. ${langHint()}\nGreet them naturally for this time of day, then in two or three short spoken sentences say who is on duty today, the weather, and anything due or coming up (mention an umbrella if rain is likely), then ask what they need help with. Say times in words, no digits like 08:00, no markdown, no bullets.\n\n${voiceContext()}`);
     await say(g);
     let idle = 0;
     while (S.voiceOn){
