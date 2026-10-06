@@ -16,6 +16,31 @@ export default async (req) => {
 
   let b;
   try { b = await req.json(); } catch { return json({ error: "Bad JSON" }, 400); }
+  if (b?.tts) {
+    // Natural-sounding speech (returns raw 24 kHz 16-bit PCM, base64)
+    const voice = process.env.GEMINI_VOICE || "Aoede";
+    const tmodels = [...new Set([process.env.GEMINI_TTS_MODEL, "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"].filter(Boolean))];
+    let last = "TTS unavailable";
+    for (const m of tmodels) {
+      try {
+        const tr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Say this warmly and naturally, like a kind friend: ${String(b.text || "").slice(0, 2500)}` }] }],
+            generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const tj = await tr.json().catch(() => ({}));
+        const audio = tj.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData?.data;
+        if (tr.ok && audio) return json({ audio, rate: 24000 });
+        last = tj.error?.message || "No audio returned";
+      } catch { last = "TTS timed out"; }
+    }
+    return json({ code: "error", error: last }, 502);
+  }
+
   const prompt = String(b?.prompt || "").slice(0, 60000);
   if (!prompt) return json({ error: "Missing prompt" }, 400);
 

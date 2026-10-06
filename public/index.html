@@ -416,8 +416,8 @@ $('#briefBtn').onclick = async () => {
   btn.disabled = true; out.classList.remove('muted'); out.textContent = 'Thinking…';
   const tasks = S.tasks.filter(t=>!t.done).map(t=>`- ${t.title}${t.due?` (due ${t.due})`:''}${t.pri==='high'?' [high]':''}`).join('\n') || 'none';
   const appts = S.appts.filter(a=>a.date>=TODAY && a.date<=addDays(TODAY,7)).sort(apSort).map(a=>`- ${a.date} ${a.time||''} ${a.title}${a.person?' for '+a.person:''}${a.place?' at '+a.place:''}`).join('\n') || 'none';
-  const prompt = `You are a calm home-care coordinator. Today is ${longDate(TODAY)} (${TODAY}).
-Write a short daily briefing as 4-7 plain-text bullets starting with "• ". Cover: who is on duty today on each roster, any day in the next 3 days with nobody scheduled on a roster, overdue or due-today tasks, appointments coming up. Be specific with names and times. No headings, no markdown.
+  const prompt = `You are a warm, friendly home-care coordinator speaking out loud to the family. Today is ${longDate(TODAY)} (${TODAY}).
+Write a short daily briefing as 4-7 plain-text bullets starting with "• ". Cover: who is on duty today on each roster, any day in the next 3 days with nobody scheduled on a roster, overdue or due-today tasks, appointments coming up. Be specific with names and times. Write the way a kind person would say it out loud: natural, short, conversational sentences, with a friendly greeting in the first bullet. Say times in words (for example "nine in the morning"), not 24-hour digits. No headings, no markdown.
 
 ROSTERS (today + next 3 days):
 ${snapshotText(TODAY,4)}
@@ -435,27 +435,45 @@ ${appts}`;
 
 /* ---------- voice ---------- */
 const TTS = window.speechSynthesis;
+const GEM_OPT = '<option value="__gemini">Natural voice (Gemini)</option>';
 const FEMALE = /samantha|ava|allison|susan|zoe|karen|moira|tessa|serena|kate|fiona|victoria|kanya|female|zira|aria|jenny|libby|sonia|natasha|catherine/i;
 function loadVoices(){
-  if (!TTS) { $('.voice').innerHTML = '<span class="muted" style="font-size:.9rem">Voice playback is not supported in this browser.</span>'; return; }
+  if (!TTS) { $('#voiceSel').innerHTML = GEM_OPT; return; }
   const all = TTS.getVoices().filter(v => /^(en|th)/i.test(v.lang));
-  if (!all.length) return;
+  if (!all.length) { $('#voiceSel').innerHTML = GEM_OPT; return; }
   const fem = all.filter(v => FEMALE.test(v.name)), rest = all.filter(v => !FEMALE.test(v.name));
   const rank = v => (/premium|enhanced|natural|neural/i.test(v.name) ? 0 : 1) + (/^en/i.test(v.lang) ? 0 : 2);
   fem.sort((a,b)=>rank(a)-rank(b));
   let saved = null; try { saved = localStorage.getItem('si-voice'); } catch(e){}
   const sel = $('#voiceSel');
-  sel.innerHTML = [...fem, ...rest].map(v => `<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('');
-  sel.value = saved && all.some(v=>v.name===saved) ? saved : (fem[0] || all[0]).name;
+  sel.innerHTML = GEM_OPT + [...fem, ...rest].map(v => `<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+  sel.value = saved && all.some(v=>v.name===saved) ? saved : '__gemini';
 }
 if (TTS){ loadVoices(); TTS.addEventListener?.('voiceschanged', loadVoices); }
 else loadVoices();
 $('#voiceSel')?.addEventListener('change', e => { try { localStorage.setItem('si-voice', e.target.value); } catch(_){} });
-function unlockSpeech(){ try { if (TTS && !S.unlocked){ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; TTS.speak(u); S.unlocked = true; } } catch(e){} }
-function speak(text){
-  if (!TTS || !text) return;
+function unlockSpeech(){ try { if (!S.audio){ S.audio = new Audio(); S.audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='; S.audio.play().catch(()=>{}); } if (TTS && !S.unlocked){ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; TTS.speak(u); S.unlocked = true; } } catch(e){} }
+function pcmToWav(b64, rate){
+  const pcm = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const h = new ArrayBuffer(44), v = new DataView(h), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0,'RIFF'); v.setUint32(4, 36 + pcm.length, true); w(8,'WAVE'); w(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32,2,true); v.setUint16(34,16,true); w(36,'data'); v.setUint32(40, pcm.length, true);
+  return new Blob([h, pcm], { type:'audio/wav' });
+}
+async function geminiSpeak(text){
+  try {
+    const j = await api('/api/ai', { tts:true, text });
+    const a = S.audio || (S.audio = new Audio());
+    a.src = URL.createObjectURL(pcmToWav(j.audio, j.rate || 24000));
+    await a.play(); return true;
+  } catch(e){ return false; }
+}
+async function speak(text){
+  if (!text) return;
+  if ($('#voiceSel').value === '__gemini'){ if (await geminiSpeak(text)) return; }
+  if (!TTS) return;
   TTS.cancel();
-  const v = TTS.getVoices().find(x => x.name === $('#voiceSel').value);
+  const v = TTS.getVoices().find(x => x.name === $('#voiceSel').value) || TTS.getVoices().find(x => FEMALE.test(x.name) && /^en/i.test(x.lang));
   // speak bullet by bullet for natural pauses
   text.split(/\n+/).map(l => l.replace(/^[•\-*]\s*/, '').replace(/(\d{2}):(\d{2})/g, (m,h,mi)=> `${+h}${mi==='00'?' o\'clock':' '+mi}`)).filter(l=>l.trim()).forEach(line => {
     const u = new SpeechSynthesisUtterance(line);
@@ -464,8 +482,8 @@ function speak(text){
     TTS.speak(u);
   });
 }
-$('#speakBtn')?.addEventListener('click', () => { const t = $('#briefOut').textContent; if ($('#briefOut').classList.contains('muted')) { $('#briefBtn').click(); return; } speak(t); });
-$('#stopBtn')?.addEventListener('click', () => TTS && TTS.cancel());
+$('#speakBtn')?.addEventListener('click', () => { unlockSpeech(); const t = $('#briefOut').textContent; if ($('#briefOut').classList.contains('muted')) { $('#briefBtn').click(); return; } speak(t); });
+$('#stopBtn')?.addEventListener('click', () => { TTS && TTS.cancel(); try { S.audio && S.audio.pause(); } catch(_){} });
 
 let pending = null;
 $('#nlForm').addEventListener('submit', async e => {
