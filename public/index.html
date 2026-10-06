@@ -1,0 +1,576 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Super Intelligence</title><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SuperIntel"><meta name="theme-color" content="#0F7B6C"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Super Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: single column command desk; sticky tab bar; roster lanes color-coded across every view */
+:root{
+  --bg:#EEF2F1; --surface:#FFFFFF; --ink:#14201C; --muted:#5B6A65; --line:#D6DEDB;
+  --accent:#0F7B6C; --accent-ink:#FFFFFF; --soft:#E2ECE9;
+  --t1:#3E5BD8; --t2:#C23B6B; --t3:#A86A00;
+  --warn:#B4231A; --ok:#1E7B3C;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1614; --surface:#18211E; --ink:#E6EEEB; --muted:#93A39E; --line:#2A3632;
+  --accent:#3CC7AE; --accent-ink:#06201B; --soft:#1F2C28;
+  --t1:#8FA2FF; --t2:#F07FA6; --t3:#E2B04A; --warn:#FF8A80; --ok:#6FD38E; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0F1614; --surface:#18211E; --ink:#E6EEEB; --muted:#93A39E; --line:#2A3632;
+  --accent:#3CC7AE; --accent-ink:#06201B; --soft:#1F2C28;
+  --t1:#8FA2FF; --t2:#F07FA6; --t3:#E2B04A; --warn:#FF8A80; --ok:#6FD38E; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 var(--f-body);padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1,h2{font-family:var(--f-display);margin:0;text-wrap:balance}
+h1{font-size:2.1rem;font-weight:800;letter-spacing:-.02em;line-height:1.05}
+h2{font-size:1.1rem;font-weight:600}
+.eyebrow{font-size:.75rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0}
+.muted{color:var(--muted)}
+.mono{font-family:var(--f-mono);font-size:.85rem;font-variant-numeric:tabular-nums}
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);display:flex;gap:4px;padding-block:12px 8px;overflow-x:auto;margin-inline:-16px;padding-inline:16px}
+.tabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 14px;font:inherit;font-size:.9rem;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+button.btn,.btn{border:0;background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:9px 14px;font:inherit;font-weight:700;cursor:pointer}
+.btn.ghost{background:var(--soft);color:var(--ink)}
+.btn.danger{background:transparent;color:var(--warn);padding:4px 8px;font-weight:400;font-size:.85rem}
+.btn:disabled{opacity:.55;cursor:default}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0;width:100%}
+textarea{resize:vertical;min-height:70px}
+form.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+form.grid .full{grid-column:1/-1}
+.inline{display:flex;gap:8px}
+.inline input{flex:1}
+.k1{--k:var(--t1)}.k2{--k:var(--t2)}.k3{--k:var(--t3)}
+.duty{display:flex;flex-direction:column;gap:8px}
+.duty-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--soft)}
+.duty-row .dot{width:10px;height:10px;border-radius:50%;background:var(--k)}
+.duty-row .lab{font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:block}
+.duty-row .who{font-family:var(--f-display);font-weight:600;font-size:1.15rem}
+.duty-row.off .who{color:var(--muted);font-weight:400;font-family:var(--f-body);font-size:1rem}
+.ai-out{white-space:pre-wrap;line-height:1.55}
+.list{display:flex;flex-direction:column}
+.item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item .body{flex:1;min-width:0;overflow-wrap:anywhere}
+.item input[type=checkbox]{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex:none}
+.item.done .title{text-decoration:line-through;color:var(--muted)}
+.pill{display:inline-block;font-size:.75rem;padding:1px 8px;border-radius:999px;background:var(--soft);color:var(--muted)}
+.pill.late{background:transparent;color:var(--warn);border:1px solid var(--warn)}
+.pill.today{background:var(--accent);color:var(--accent-ink)}
+.datebox{flex:none;width:52px;text-align:center;border-radius:10px;background:var(--soft);padding:4px 0}
+.datebox b{display:block;font-family:var(--f-display);font-size:1.3rem;line-height:1.1}
+.datebox span{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.85rem}
+.legend span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--k);margin-right:6px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.cal .dow{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;padding-bottom:4px}
+.cal button.day{min-height:74px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px;text-align:left;font:inherit;color:var(--ink);cursor:pointer;display:flex;flex-direction:column;gap:1px;min-width:0}
+.cal button.day.blank{visibility:hidden}
+.cal button.day.is-today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.cal button.day.is-sel{background:var(--soft)}
+.cal .num{font-size:.75rem;font-weight:700;font-variant-numeric:tabular-nums}
+.cal .e{font-size:.68rem;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--k);font-weight:700}
+.cal .e.off{color:var(--muted);font-weight:400;opacity:.6}
+.cal .e.ap{color:var(--ink);font-weight:400}
+.edit-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px;border-left:4px solid var(--k);background:var(--soft);border-radius:8px}
+.edit-row .lab{grid-column:1/-1;font-weight:700;color:var(--k)}
+.edit-row label.chk{grid-column:1/-1;display:flex;gap:8px;align-items:center;font-size:.9rem}
+.edit-row label.chk input{width:auto}
+.banner{background:var(--soft);border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-size:.9rem}
+.preview{border:1px solid var(--accent);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.empty{color:var(--muted);font-size:.95rem;padding:6px 0}
+details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .2s}}
+@media (max-width:420px){h1{font-size:1.8rem}.cal button.day{min-height:66px;padding:3px}}
+.cols,.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.voice{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.voice select{width:auto;flex:1 1 180px}
+/* iPad / tablet: two columns, bigger calendar */
+.wrap{max-width:1180px}
+@media (min-width:820px){
+  body{font-size:17px}
+  .cols{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+  .cols>.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+  section[data-view="cal"].cols{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
+  .cal{gap:5px}
+  .cal button.day{min-height:104px;padding:6px}
+  .cal .num{font-size:.9rem}
+  .cal .e{font-size:.8rem}
+  .tabs button{padding:10px 18px;font-size:1rem}
+  .btn,button.btn{padding:11px 18px}
+}
+</style>
+
+<div class="wrap">
+  <nav class="tabs" role="tablist">
+    <button data-v="today" aria-selected="true">Today</button>
+    <button data-v="cal" aria-selected="false">Calendar</button>
+    <button data-v="tasks" aria-selected="false">Tasks</button>
+    <button data-v="appts" aria-selected="false">Appointments</button>
+    <button data-v="notes" aria-selected="false">Visit notes</button>
+  </nav>
+  <div id="dbBanner" class="banner" hidden>Can't reach the database right now. Check your connection, then pull to refresh.</div>
+
+  <!-- TODAY -->
+  <section data-view="today" class="cols">
+   <div class="col">
+    <div class="card">
+      <p class="eyebrow" id="todayLabel"></p>
+      <h1>Who's on today</h1>
+      <div id="todayDuty" class="duty"><p class="empty">Loading rosters…</p></div>
+    </div>
+    <div class="card" id="briefCard">
+      <div class="row"><h2>Daily briefing</h2><button class="btn" id="briefBtn" type="button">Brief me</button></div>
+      <div class="voice"><select id="voiceSel" aria-label="Voice"></select><button class="btn ghost" id="speakBtn" type="button">▶ Play</button><button class="btn ghost" id="stopBtn" type="button">■ Stop</button><label style="display:flex;gap:6px;align-items:center;font-size:.9rem"><input type="checkbox" id="autoSpeak" checked style="width:auto"> Read aloud</label></div>
+      <div id="briefOut" class="ai-out muted">Tap “Brief me” for a short summary of today's duty, coverage gaps, tasks and appointments.</div>
+    </div>
+    <div class="card" id="nlCard">
+      <h2>Quick add</h2>
+      <form id="nlForm" class="inline"><input id="nlIn" autocomplete="off" placeholder="PT with View Thursday 11am"><button class="btn" type="submit">Add</button></form>
+      <p class="muted" style="margin:0;font-size:.85rem">Type a task, appointment, roster change or visit note in plain words.</p>
+      <div id="nlPrev"></div>
+    </div>
+   </div>
+   <div class="col">
+    <div class="card"><div class="row"><h2>Tasks due</h2><button class="btn ghost" type="button" data-go="tasks">All tasks</button></div><div id="todayTasks" class="list"></div></div>
+    <div class="card"><div class="row"><h2>Next 7 days</h2><button class="btn ghost" type="button" data-go="appts">All appointments</button></div><div id="todayAppts" class="list"></div></div>
+    <div class="card"><p class="eyebrow" id="tmrLabel"></p><h2>Tomorrow's roster</h2><div id="tmrDuty" class="duty"></div></div>
+   </div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section data-view="cal" class="cols" hidden>
+   <div class="col">
+    <div class="card">
+      <div class="row">
+        <button class="btn ghost" id="prevM" type="button" aria-label="Previous month">‹</button>
+        <h2 id="monthLabel"></h2>
+        <button class="btn ghost" id="nextM" type="button" aria-label="Next month">›</button>
+      </div>
+      <div id="legend" class="legend"></div>
+      <div id="calGrid" class="cal"></div>
+    </div>
+   </div>
+   <div class="col">
+    <div class="card" id="dayDetail"></div>
+    <div class="card">
+      <details id="renameBox"><summary>Rename rosters</summary><form id="renameForm" class="grid" style="margin-top:10px"></form></details>
+    </div>
+   </div>
+  </section>
+
+  <!-- TASKS -->
+  <section data-view="tasks" class="cols" hidden>
+   <div class="col">
+    <div class="card">
+      <h2>Add task</h2>
+      <form id="taskForm" class="grid">
+        <input id="taskTitle" class="full" required placeholder="Refill prescription at pharmacy">
+        <input id="taskDue" type="date">
+        <select id="taskPri"><option value="normal">Normal</option><option value="high">High priority</option></select>
+        <button class="btn full" type="submit">Add task</button>
+      </form>
+    </div>
+   </div>
+   <div class="col">
+    <div class="card"><h2>Open</h2><div id="taskOpen" class="list"></div></div>
+    <div class="card"><details><summary>Done (<span id="doneCount">0</span>)</summary><div id="taskDone" class="list"></div></details></div>
+   </div>
+  </section>
+
+  <!-- APPOINTMENTS -->
+  <section data-view="appts" class="cols" hidden>
+   <div class="col">
+    <div class="card">
+      <h2>Add appointment</h2>
+      <form id="apptForm" class="grid">
+        <input id="apTitle" class="full" required placeholder="Check-up with Dr. Somchai">
+        <input id="apDate" type="date" required>
+        <input id="apTime" type="time">
+        <input id="apFor" placeholder="For whom">
+        <input id="apPlace" placeholder="Place">
+        <button class="btn full" type="submit">Add appointment</button>
+      </form>
+    </div>
+   </div>
+   <div class="col">
+    <div class="card"><h2>Upcoming</h2><div id="apUp" class="list"></div></div>
+    <div class="card"><details><summary>Past (<span id="pastCount">0</span>)</summary><div id="apPast" class="list"></div></details></div>
+   </div>
+  </section>
+
+  <!-- NOTES -->
+  <section data-view="notes" class="cols" hidden>
+   <div class="col">
+    <div class="card">
+      <h2>Add visit note</h2>
+      <form id="noteForm" class="grid">
+        <input id="noDate" type="date" required>
+        <select id="noTrack"></select>
+        <input id="noWho" placeholder="Staff name">
+        <textarea id="noText" class="full" required placeholder="What happened during the visit, exercises done, anything to follow up"></textarea>
+        <button class="btn full" type="submit">Save note</button>
+      </form>
+    </div>
+   </div>
+   <div class="col">
+    <div class="card">
+      <div class="row"><h2>Summary</h2><button class="btn" id="sumBtn" type="button">Summarize notes</button></div>
+      <div id="sumOut" class="ai-out muted">Summarizes the latest visit notes into patterns, concerns and follow-ups.</div>
+    </div>
+    <div class="card"><h2>All notes</h2><div id="noteList" class="list"></div></div>
+   </div>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2,'0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const pd = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const addDays = (s,n) => { const d = pd(s); d.setDate(d.getDate()+n); return ymd(d); };
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const longDate = s => { const d = pd(s); return `${DOW[d.getDay()]} · ${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}`; };
+const TODAY = ymd(new Date());
+
+const S = { tracks:[], visits:new Map(), tasks:[], appts:[], notes:[], view:'today', month:TODAY.slice(0,7), sel:TODAY, dirty:false, db:null, sample:null };
+const kOf = t => 'k' + ((S.tracks.indexOf(t) % 3) + 1);
+const vis = (tid, date) => S.visits.get(tid + '_' + date);
+const timeStr = v => v && (v.start || v.end) ? [v.start, v.end].filter(Boolean).join('–') : '';
+
+function copyFor(code){
+  return ({not_granted:'Wrong PIN. Reload the page to enter it again.', rate_limited:'Too many requests right now. Try again in a minute.', refused:'The AI could not answer that. Try rewording.', invalid_json:'Could not read that. Try rewording it more plainly.'})[code] || 'Something went wrong. Try again.';
+}
+
+/* ---------- views ---------- */
+document.querySelectorAll('.tabs button, [data-go]').forEach(b => b.addEventListener('click', () => show(b.dataset.v || b.dataset.go)));
+function show(v){
+  S.view = v;
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.v === v)));
+  document.querySelectorAll('[data-view]').forEach(s => s.hidden = s.dataset.view !== v);
+  try { localStorage.setItem('si-view', v); } catch(e){}
+  render();
+}
+
+function dutyHTML(date){
+  if (!S.tracks.length) return '<p class="empty">No rosters yet. They will appear here once added.</p>';
+  return S.tracks.map(t => {
+    const v = vis(t.id, date); const off = !v || v.off || !v.who;
+    return `<div class="duty-row ${kOf(t)} ${off?'off':''}"><span class="dot"></span><div><span class="lab">${esc(t.label)}</span><span class="who">${off ? 'No one scheduled' : esc(v.who)}</span></div><span class="mono muted">${off?'':esc(timeStr(v))}</span></div>`;
+  }).join('');
+}
+
+function taskItem(t){
+  const late = t.due && t.due < TODAY && !t.done, today = t.due === TODAY;
+  return `<div class="item ${t.done?'done':''}"><input type="checkbox" data-task="${esc(t.id)}" ${t.done?'checked':''} aria-label="Mark done"><div class="body"><div class="title">${t.pri==='high'?'<b>! </b>':''}${esc(t.title)}</div>${t.due?`<span class="pill ${late?'late':today?'today':''}">${late?'Overdue · ':''}${today?'Today':esc(longDate(t.due))}</span>`:''}</div><button class="btn danger" data-del="tasks/${esc(t.id)}" type="button">Remove</button></div>`;
+}
+function apptItem(a){
+  const d = pd(a.date);
+  return `<div class="item"><div class="datebox"><b>${d.getDate()}</b><span>${MON[d.getMonth()]}</span></div><div class="body"><div class="title"><b>${esc(a.title)}</b></div><div class="muted" style="font-size:.9rem">${[DOW[d.getDay()], a.time&&`<span class="mono">${esc(a.time)}</span>`, a.person&&esc(a.person), a.place&&esc(a.place)].filter(Boolean).join(' · ')}</div></div><button class="btn danger" data-del="appts/${esc(a.id)}" type="button">Remove</button></div>`;
+}
+
+function render(){
+  $('#todayLabel').textContent = longDate(TODAY);
+  $('#tmrLabel').textContent = longDate(addDays(TODAY,1));
+  if (S.view === 'today'){
+    $('#todayDuty').innerHTML = dutyHTML(TODAY);
+    $('#tmrDuty').innerHTML = dutyHTML(addDays(TODAY,1));
+    const due = S.tasks.filter(t => !t.done && (!t.due || t.due <= TODAY)).sort((a,b)=>(a.due||'9').localeCompare(b.due||'9'));
+    $('#todayTasks').innerHTML = due.length ? due.map(taskItem).join('') : '<p class="empty">Nothing due today. Add tasks in Quick add or the Tasks tab.</p>';
+    const wk = addDays(TODAY,7);
+    const ap = S.appts.filter(a => a.date >= TODAY && a.date <= wk).sort(apSort);
+    $('#todayAppts').innerHTML = ap.length ? ap.map(apptItem).join('') : '<p class="empty">No appointments in the next week.</p>';
+  }
+  if (S.view === 'cal') renderCal();
+  if (S.view === 'tasks'){
+    const open = S.tasks.filter(t=>!t.done).sort((a,b)=>(b.pri==='high')-(a.pri==='high') || (a.due||'9').localeCompare(b.due||'9'));
+    const done = S.tasks.filter(t=>t.done);
+    $('#taskOpen').innerHTML = open.length ? open.map(taskItem).join('') : '<p class="empty">No open tasks.</p>';
+    $('#taskDone').innerHTML = done.map(taskItem).join('');
+    $('#doneCount').textContent = done.length;
+  }
+  if (S.view === 'appts'){
+    const up = S.appts.filter(a=>a.date>=TODAY).sort(apSort), past = S.appts.filter(a=>a.date<TODAY).sort(apSort).reverse();
+    $('#apUp').innerHTML = up.length ? up.map(apptItem).join('') : '<p class="empty">No upcoming appointments. Add one above.</p>';
+    $('#apPast').innerHTML = past.map(apptItem).join(''); $('#pastCount').textContent = past.length;
+  }
+  if (S.view === 'notes'){
+    const sel = $('#noTrack'), cur = sel.value;
+    sel.innerHTML = S.tracks.map(t=>`<option value="${esc(t.id)}">${esc(t.label)}</option>`).join('') + '<option value="">Other</option>';
+    if (cur) sel.value = cur;
+    if (!$('#noDate').value) $('#noDate').value = TODAY;
+    const ns = [...S.notes].sort((a,b)=>b.date.localeCompare(a.date));
+    $('#noteList').innerHTML = ns.length ? ns.map(n => { const t = S.tracks.find(x=>x.id===n.track);
+      return `<div class="item"><div class="body"><div class="muted" style="font-size:.85rem">${esc(longDate(n.date))}${t?` · <span class="${kOf(t)}" style="color:var(--k);font-weight:700">${esc(t.label)}</span>`:''}${n.who?` · ${esc(n.who)}`:''}</div><div>${esc(n.text)}</div></div><button class="btn danger" data-del="notes/${esc(n.id)}" type="button">Remove</button></div>`; }).join('') : '<p class="empty">No visit notes yet. Notes you add here feed the summary.</p>';
+  }
+}
+const apSort = (a,b) => (a.date+(a.time||'')).localeCompare(b.date+(b.time||''));
+
+/* ---------- calendar ---------- */
+$('#prevM').onclick = () => stepMonth(-1); $('#nextM').onclick = () => stepMonth(1);
+function stepMonth(n){ const [y,m] = S.month.split('-').map(Number); const d = new Date(y, m-1+n, 1); S.month = ymd(d).slice(0,7); renderCal(); }
+function renderCal(){
+  const [y,m] = S.month.split('-').map(Number);
+  $('#monthLabel').textContent = `${['January','February','March','April','May','June','July','August','September','October','November','December'][m-1]} ${y}`;
+  $('#legend').innerHTML = S.tracks.map(t=>`<span class="${kOf(t)}">${esc(t.label)}</span>`).join('') + '<span style="--k:var(--ink)">Appointment</span>';
+  const first = new Date(y, m-1, 1).getDay(), days = new Date(y, m, 0).getDate();
+  let h = DOW.map(d=>`<div class="dow">${d}</div>`).join('');
+  for (let i=0;i<first;i++) h += '<button class="day blank" tabindex="-1" aria-hidden="true"></button>';
+  for (let d=1; d<=days; d++){
+    const ds = `${y}-${pad(m)}-${pad(d)}`;
+    const lines = S.tracks.map(t => { const v = vis(t.id, ds); const off = !v || v.off || !v.who;
+      return `<span class="e ${kOf(t)} ${off?'off':''}">${off?'—':esc(v.who)}</span>`; }).join('');
+    const nAp = S.appts.filter(a=>a.date===ds).length;
+    h += `<button type="button" class="day ${ds===TODAY?'is-today':''} ${ds===S.sel?'is-sel':''}" data-day="${ds}"><span class="num">${d}</span>${lines}${nAp?`<span class="e ap">● ${nAp} appt</span>`:''}</button>`;
+  }
+  $('#calGrid').innerHTML = h;
+  if (!S.dirty) renderDay();
+  const rb = $('#renameForm');
+  if (!rb.contains(document.activeElement)) rb.innerHTML = S.tracks.map(t=>`<input id="rn-${esc(t.id)}" data-rn="${esc(t.id)}" value="${esc(t.label)}" aria-label="Roster name">`).join('') + '<button class="btn" type="submit">Save names</button>';
+}
+$('#calGrid').addEventListener('click', e => { const b = e.target.closest('[data-day]'); if (!b) return; S.sel = b.dataset.day; S.dirty = false; renderCal(); $('#dayDetail').scrollIntoView({behavior:'smooth', block:'nearest'}); });
+
+function renderDay(){
+  const ds = S.sel, ap = S.appts.filter(a=>a.date===ds).sort(apSort);
+  let h = `<div class="row"><div><p class="eyebrow">${esc(longDate(ds))}</p><h2>Edit this day</h2></div></div>`;
+  h += S.tracks.map(t => { const v = vis(t.id, ds) || {}; const id = t.id;
+    return `<div class="edit-row ${kOf(t)}"><span class="lab">${esc(t.label)}</span>
+      <input id="ed-${id}-who" data-f="who" data-t="${id}" placeholder="Name" value="${esc(v.off?'':v.who)}" class="full" style="grid-column:1/-1">
+      <input id="ed-${id}-start" data-f="start" data-t="${id}" type="time" value="${esc(v.start||'')}" aria-label="Start">
+      <input id="ed-${id}-end" data-f="end" data-t="${id}" type="time" value="${esc(v.end||'')}" aria-label="End">
+      <label class="chk"><input id="ed-${id}-off" data-f="off" data-t="${id}" type="checkbox" ${v.off?'checked':''}> Off / no visit</label></div>`; }).join('');
+  h += `<button class="btn" id="saveDay" type="button">Save day</button>`;
+  if (ap.length) h += `<div class="list">${ap.map(apptItem).join('')}</div>`;
+  $('#dayDetail').innerHTML = h;
+}
+$('#dayDetail').addEventListener('input', () => S.dirty = true);
+$('#dayDetail').addEventListener('click', async e => {
+  if (e.target.id !== 'saveDay' || !S.db) return;
+  e.target.disabled = true; e.target.textContent = 'Saving…';
+  try {
+    for (const t of S.tracks){
+      const g = f => $(`#ed-${t.id}-${f}`);
+      const off = g('off').checked, who = g('who').value.trim();
+      await S.db.doc(`visits/${t.id}_${S.sel}`).set({track:t.id, date:S.sel, who: off ? '' : who, start:g('start').value, end:g('end').value, off: off || !who});
+    }
+    S.dirty = false; e.target.textContent = 'Saved';
+  } catch(err){ e.target.textContent = 'Could not save. Try again'; e.target.disabled = false; }
+});
+$('#renameForm').addEventListener('submit', async e => {
+  e.preventDefault(); if (!S.db) return;
+  for (const inp of e.target.querySelectorAll('[data-rn]')){
+    const t = S.tracks.find(x=>x.id===inp.dataset.rn); const v = inp.value.trim();
+    if (t && v && v !== t.label) await S.db.doc('tracks/'+t.id).update({label:v});
+  }
+  document.activeElement.blur();
+});
+
+/* ---------- generic list actions ---------- */
+document.addEventListener('change', async e => {
+  const id = e.target.dataset?.task; if (!id || !S.db) return;
+  await S.db.doc('tasks/'+id).update({done: e.target.checked}).catch(()=>{});
+});
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-del]'); if (!b || !S.db) return;
+  if (b.dataset.armed !== '1'){ b.dataset.armed = '1'; b.textContent = 'Confirm remove'; setTimeout(()=>{ if (b.isConnected){ b.dataset.armed=''; b.textContent='Remove'; } }, 4000); return; }
+  await S.db.doc(b.dataset.del).delete().catch(()=>{});
+});
+
+/* ---------- forms ---------- */
+$('#taskForm').addEventListener('submit', async e => {
+  e.preventDefault(); if (!S.db) return;
+  await S.db.collection('tasks').add({title:$('#taskTitle').value.trim(), due:$('#taskDue').value||'', pri:$('#taskPri').value, done:false, created:Date.now()});
+  e.target.reset();
+});
+$('#apptForm').addEventListener('submit', async e => {
+  e.preventDefault(); if (!S.db) return;
+  await S.db.collection('appts').add({title:$('#apTitle').value.trim(), date:$('#apDate').value, time:$('#apTime').value, person:$('#apFor').value.trim(), place:$('#apPlace').value.trim()});
+  e.target.reset();
+});
+$('#noteForm').addEventListener('submit', async e => {
+  e.preventDefault(); if (!S.db) return;
+  await S.db.collection('notes').add({date:$('#noDate').value, track:$('#noTrack').value, who:$('#noWho').value.trim(), text:$('#noText').value.trim(), created:Date.now()});
+  $('#noText').value = ''; $('#noWho').value = '';
+});
+
+/* ---------- AI ---------- */
+function snapshotText(from, days){
+  const out = [];
+  for (let i=0;i<days;i++){
+    const d = addDays(from,i);
+    out.push(`${longDate(d)}: ` + S.tracks.map(t => { const v = vis(t.id,d); return `${t.label}=${!v||v.off||!v.who?'none':v.who+(timeStr(v)?' '+timeStr(v):'')}`; }).join('; '));
+  }
+  return out.join('\n');
+}
+$('#briefBtn').onclick = async () => {
+  const out = $('#briefOut'), btn = $('#briefBtn');
+  if (!S.sample){ out.textContent = 'AI briefing is not available in this view.'; return; }
+  btn.disabled = true; out.classList.remove('muted'); out.textContent = 'Thinking…';
+  const tasks = S.tasks.filter(t=>!t.done).map(t=>`- ${t.title}${t.due?` (due ${t.due})`:''}${t.pri==='high'?' [high]':''}`).join('\n') || 'none';
+  const appts = S.appts.filter(a=>a.date>=TODAY && a.date<=addDays(TODAY,7)).sort(apSort).map(a=>`- ${a.date} ${a.time||''} ${a.title}${a.person?' for '+a.person:''}${a.place?' at '+a.place:''}`).join('\n') || 'none';
+  const prompt = `You are a calm home-care coordinator. Today is ${longDate(TODAY)} (${TODAY}).
+Write a short daily briefing as 4-7 plain-text bullets starting with "• ". Cover: who is on duty today on each roster, any day in the next 3 days with nobody scheduled on a roster, overdue or due-today tasks, appointments coming up. Be specific with names and times. No headings, no markdown.
+
+ROSTERS (today + next 3 days):
+${snapshotText(TODAY,4)}
+
+OPEN TASKS:
+${tasks}
+
+APPOINTMENTS (next 7 days):
+${appts}`;
+  unlockSpeech();
+  try { const r = await S.sample(prompt, {onText:({text}) => out.textContent = text}); if ($('#autoSpeak').checked) speak(r.text); }
+  catch(e){ out.textContent = e.text || copyFor(e.code); }
+  finally { btn.disabled = false; }
+};
+
+/* ---------- voice ---------- */
+const TTS = window.speechSynthesis;
+const FEMALE = /samantha|ava|allison|susan|zoe|karen|moira|tessa|serena|kate|fiona|victoria|kanya|female|zira|aria|jenny|libby|sonia|natasha|catherine/i;
+function loadVoices(){
+  if (!TTS) { $('.voice').innerHTML = '<span class="muted" style="font-size:.9rem">Voice playback is not supported in this browser.</span>'; return; }
+  const all = TTS.getVoices().filter(v => /^(en|th)/i.test(v.lang));
+  if (!all.length) return;
+  const fem = all.filter(v => FEMALE.test(v.name)), rest = all.filter(v => !FEMALE.test(v.name));
+  const rank = v => (/premium|enhanced|natural|neural/i.test(v.name) ? 0 : 1) + (/^en/i.test(v.lang) ? 0 : 2);
+  fem.sort((a,b)=>rank(a)-rank(b));
+  let saved = null; try { saved = localStorage.getItem('si-voice'); } catch(e){}
+  const sel = $('#voiceSel');
+  sel.innerHTML = [...fem, ...rest].map(v => `<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+  sel.value = saved && all.some(v=>v.name===saved) ? saved : (fem[0] || all[0]).name;
+}
+if (TTS){ loadVoices(); TTS.addEventListener?.('voiceschanged', loadVoices); }
+else loadVoices();
+$('#voiceSel')?.addEventListener('change', e => { try { localStorage.setItem('si-voice', e.target.value); } catch(_){} });
+function unlockSpeech(){ try { if (TTS && !S.unlocked){ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; TTS.speak(u); S.unlocked = true; } } catch(e){} }
+function speak(text){
+  if (!TTS || !text) return;
+  TTS.cancel();
+  const v = TTS.getVoices().find(x => x.name === $('#voiceSel').value);
+  // speak bullet by bullet for natural pauses
+  text.split(/\n+/).map(l => l.replace(/^[•\-*]\s*/, '').replace(/(\d{2}):(\d{2})/g, (m,h,mi)=> `${+h}${mi==='00'?' o\'clock':' '+mi}`)).filter(l=>l.trim()).forEach(line => {
+    const u = new SpeechSynthesisUtterance(line);
+    if (v){ u.voice = v; u.lang = v.lang; }
+    u.rate = 0.95; u.pitch = 1.05;
+    TTS.speak(u);
+  });
+}
+$('#speakBtn')?.addEventListener('click', () => { const t = $('#briefOut').textContent; if ($('#briefOut').classList.contains('muted')) { $('#briefBtn').click(); return; } speak(t); });
+$('#stopBtn')?.addEventListener('click', () => TTS && TTS.cancel());
+
+let pending = null;
+$('#nlForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const txt = $('#nlIn').value.trim(), box = $('#nlPrev'); if (!txt) return;
+  if (!S.sample){ box.innerHTML = '<p class="empty">Quick add needs the AI service. Try again in a moment, or use the tabs.</p>'; return; }
+  box.innerHTML = '<p class="muted">Reading…</p>';
+  const tr = S.tracks.map(t=>`${t.id} = "${t.label}"`).join(', ');
+  const prompt = `Turn the user's text into ONE entry. Today is ${DOW[pd(TODAY).getDay()]} ${TODAY}. Resolve relative dates to YYYY-MM-DD, times to 24h HH:MM.
+Rosters: ${tr}. Use "visit" only when the text assigns a staff member to a roster day; "note" when it records what happened at a visit.
+Reply with only one JSON object in one of these shapes:
+{"type":"task","title":string,"due":"YYYY-MM-DD"|"","pri":"normal"|"high"}
+{"type":"appt","title":string,"date":"YYYY-MM-DD","time":"HH:MM"|"","person":string,"place":string}
+{"type":"visit","track":roster id,"date":"YYYY-MM-DD","who":string,"start":"HH:MM"|"","end":"HH:MM"|""}
+{"type":"note","track":roster id or "","date":"YYYY-MM-DD","who":string,"text":string}
+
+User text: ${txt}`;
+  try {
+    const r = await S.sample.json(prompt, {modelTier:'quick'});
+    if (!r || !r.type) throw {code:'invalid_json'};
+    pending = r;
+    const t = S.tracks.find(x=>x.id===r.track);
+    const lines = {
+      task: `<b>Task:</b> ${esc(r.title)}${r.due?` · due ${esc(longDate(r.due))}`:''}${r.pri==='high'?' · high priority':''}`,
+      appt: `<b>Appointment:</b> ${esc(r.title)} · ${r.date?esc(longDate(r.date)):''} ${r.time?`<span class="mono">${esc(r.time)}</span>`:''}${r.person?' · '+esc(r.person):''}${r.place?' · '+esc(r.place):''}`,
+      visit: `<b>Roster:</b> ${esc(t?.label||r.track)} · ${r.date?esc(longDate(r.date)):''} · ${esc(r.who)} <span class="mono">${esc([r.start,r.end].filter(Boolean).join('–'))}</span>`,
+      note: `<b>Visit note:</b> ${r.date?esc(longDate(r.date)):''}${t?' · '+esc(t.label):''}${r.who?' · '+esc(r.who):''}<br>${esc(r.text)}`
+    }[r.type] || 'Could not understand that.';
+    box.innerHTML = `<div class="preview"><div>${lines}</div><div class="inline"><button class="btn" id="nlSave" type="button">Save</button><button class="btn ghost" id="nlDrop" type="button">Discard</button></div></div>`;
+  } catch(err){ box.innerHTML = `<p class="empty">${esc(copyFor(err.code))}</p>`; }
+});
+$('#nlPrev').addEventListener('click', async e => {
+  if (e.target.id === 'nlDrop'){ pending = null; $('#nlPrev').innerHTML = ''; return; }
+  if (e.target.id !== 'nlSave' || !pending || !S.db) return;
+  const r = pending; e.target.disabled = true;
+  try {
+    if (r.type==='task') await S.db.collection('tasks').add({title:String(r.title||''), due:r.due||'', pri:r.pri==='high'?'high':'normal', done:false, created:Date.now()});
+    if (r.type==='appt') await S.db.collection('appts').add({title:String(r.title||''), date:r.date||TODAY, time:r.time||'', person:r.person||'', place:r.place||''});
+    if (r.type==='visit') await S.db.doc(`visits/${r.track}_${r.date}`).set({track:r.track, date:r.date, who:r.who||'', start:r.start||'', end:r.end||'', off:!r.who});
+    if (r.type==='note') await S.db.collection('notes').add({date:r.date||TODAY, track:r.track||'', who:r.who||'', text:String(r.text||''), created:Date.now()});
+    pending = null; $('#nlIn').value = ''; $('#nlPrev').innerHTML = '<p class="muted">Saved.</p>';
+  } catch(err){ e.target.disabled = false; $('#nlPrev').insertAdjacentHTML('beforeend','<p class="empty">Could not save. Try again.</p>'); }
+});
+
+$('#sumBtn').onclick = async () => {
+  const out = $('#sumOut'), btn = $('#sumBtn');
+  if (!S.sample){ out.textContent = 'Summaries are not available in this view.'; return; }
+  const ns = [...S.notes].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,60);
+  if (!ns.length){ out.textContent = 'Add a few visit notes first.'; return; }
+  btn.disabled = true; out.classList.remove('muted'); out.textContent = 'Thinking…';
+  const body = ns.map(n => { const t = S.tracks.find(x=>x.id===n.track); return `${n.date} [${t?t.label:'Other'}${n.who?', '+n.who:''}] ${n.text}`; }).join('\n');
+  try { await S.sample(`Summarize these home visit notes for a family caregiver. Use short plain-text bullets starting with "• " under three labels written as plain lines: "Progress", "Concerns", "Follow-ups". Mention dates and staff names where useful. No markdown.\n\n${body}`, {onText:({text}) => out.textContent = text}); }
+  catch(e){ out.textContent = e.text || copyFor(e.code); }
+  finally { btn.disabled = false; }
+};
+
+/* ---------- boot ---------- */
+try { const v = localStorage.getItem('si-view'); if (v && document.querySelector(`[data-view="${v}"]`)) show(v); } catch(e){}
+render();
+/* ---------- backend: Netlify functions (Supabase + Gemini), PIN-protected ---------- */
+function getPin(force){
+  let p = null; try { p = localStorage.getItem('si-pin'); } catch(e){}
+  if (!p || force){ p = (prompt('Enter your Super Intelligence PIN') || '').trim(); try { localStorage.setItem('si-pin', p); } catch(e){} }
+  return p;
+}
+async function api(path, body){
+  const r = await fetch(path, { method:'POST', headers:{'content-type':'application/json','x-app-pin':getPin()}, body:JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401){ try { localStorage.removeItem('si-pin'); } catch(e){} }
+  if (!r.ok) throw { code: j.code || 'error', text: r.status === 401 ? copyFor('not_granted') : undefined };
+  return j;
+}
+async function refresh(){
+  const { items } = await api('/api/db', { op:'list' });
+  const by = c => items.filter(x => x.col === c);
+  S.tracks = by('tracks').map(x => ({ id:x.id, ...x.data })).sort((a,b) => (a.order||0) - (b.order||0));
+  S.visits = new Map(by('visits').map(x => [x.id, x.data]));
+  S.tasks  = by('tasks').map(x => ({ id:x.id, ...x.data }));
+  S.appts  = by('appts').map(x => ({ id:x.id, ...x.data }));
+  S.notes  = by('notes').map(x => ({ id:x.id, ...x.data }));
+  $('#dbBanner').hidden = true;
+  render();
+}
+const after = p => p.then(r => { refresh().catch(()=>{}); return r; });
+S.db = {
+  collection: col => ({ add: data => after(api('/api/db', { op:'add', col, data })) }),
+  doc: path => { const [col, id] = path.split('/'); return {
+    set:    data => after(api('/api/db', { op:'set', col, id, data })),
+    update: data => after(api('/api/db', { op:'update', col, id, data })),
+    delete: ()   => after(api('/api/db', { op:'delete', col, id })),
+  }; }
+};
+const sample = async (prompt, opts = {}) => {
+  const { text } = await api('/api/ai', { prompt });
+  opts.onText?.({ text }); return { text };
+};
+sample.json = async (prompt) => {
+  const { text } = await api('/api/ai', { prompt, json:true });
+  try { return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch(e){ throw { code:'invalid_json' }; }
+};
+S.sample = sample;
+const load = () => refresh().catch(e => { $('#dbBanner').hidden = false; if (e.code === 'not_granted') $('#todayDuty').innerHTML = '<p class="empty">Wrong PIN. Reload the page to try again.</p>'; });
+getPin(); load();
+setInterval(() => { if (!document.hidden && !S.dirty) load(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+</script>
+
+</body></html>
