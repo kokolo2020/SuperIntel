@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Super Intelligence</title><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SuperIntel"><meta name="theme-color" content="#0F7B6C"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Super Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@500&display=swap">
@@ -115,7 +115,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
     <button data-v="appts" aria-selected="false">Appointments</button>
     <button data-v="notes" aria-selected="false">Visit notes</button>
   </nav>
-  <div id="dbBanner" class="banner" hidden>Can't reach the database right now. Check your connection, then pull to refresh.</div>
+  <div id="dbBanner" class="banner" hidden>Could not reach the server. Check your connection and the PIN, then reload.</div>
 
   <!-- TODAY -->
   <section data-view="today" class="cols">
@@ -230,6 +230,60 @@ details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
 </div>
 
 <script>
+/* ---------- backend client: Netlify functions (Supabase + Gemini) ---------- */
+const PIN_KEY = 'si-pin';
+function getPin(force){
+  let p = null; try { p = localStorage.getItem(PIN_KEY); } catch(e){}
+  if (!p || force){ p = (prompt('Enter your Super Intelligence PIN') || '').trim(); try { localStorage.setItem(PIN_KEY, p); } catch(e){} }
+  return p;
+}
+async function call(path, body, retry = true){
+  let res;
+  try { res = await fetch('/api/' + path, { method:'POST', headers:{'content-type':'application/json','x-app-pin':getPin()}, body: JSON.stringify(body) }); }
+  catch(e){ throw { code:'error', text:'Network error: ' + (e.message || e) }; }
+  if (res.status === 401 && retry){ getPin(true); return call(path, body, false); }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw { code: res.status === 429 ? 'rate_limited' : 'error', text: j.error || ('Server error ' + res.status + (res.status === 504 || res.status === 502 ? ' (timed out)' : '')) };
+  return j;
+}
+const db = (() => {
+  const listeners = {}; const data = {};
+  const snap = name => ({ docs: (data[name] || []).map(r => { const { id, ...rest } = r; return { id, data: () => rest }; }) });
+  const notify = () => Object.keys(listeners).forEach(n => listeners[n].forEach(cb => cb(snap(n))));
+  const refresh = async () => { try { Object.assign(data, await call('data', { op:'all' })); notify(); } catch(e){ listeners._fail?.forEach(f => f()); } };
+  const write = async (op, table, id, payload) => { await call('data', { op, table, id, data: payload }); await refresh(); };
+  const fails = (listeners._fail = []);
+  return {
+    refresh,
+    collection: name => ({
+      orderBy(){ return this; },
+      onSnapshot(cb, fail){ (listeners[name] ||= []).push(cb); if (fail) fails.push(fail); },
+      add: payload => write('add', name, null, payload)
+    }),
+    doc: path => { const [table, id] = path.split('/');
+      return { set: p => write('set', table, id, p), update: p => write('update', table, id, p), delete: () => write('delete', table, id) }; }
+  };
+})();
+const sample = Object.assign(
+  async (prompt, opts = {}) => { const j = await call('ai', { op:'text', prompt }); opts.onText?.({ text: j.text }); return { text: j.text }; },
+  { json: async prompt => (await call('ai', { op:'json', prompt })).data }
+);
+function pcmToWav(b64, rate = 24000){
+  const pcm = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const h = new ArrayBuffer(44), v = new DataView(h), w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0,'RIFF'); v.setUint32(4, 36 + pcm.length, true); w(8,'WAVE'); w(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32,2,true); v.setUint16(34,16,true); w(36,'data'); v.setUint32(40, pcm.length, true);
+  return new Blob([h, pcm], { type:'audio/wav' });
+}
+async function geminiSpeak(text){
+  try {
+    const j = await call('ai', { op:'tts', text: text.replace(/^[•\-*]\s*/gm, '') });
+    const a = S.audio || (S.audio = new Audio());
+    a.src = URL.createObjectURL(pcmToWav(j.audio, j.rate || 24000));
+    await a.play(); return true;
+  } catch(e){ return false; }
+}
+
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const pad = n => String(n).padStart(2,'0');
@@ -247,7 +301,7 @@ const vis = (tid, date) => S.visits.get(tid + '_' + date);
 const timeStr = v => v && (v.start || v.end) ? [v.start, v.end].filter(Boolean).join('–') : '';
 
 function copyFor(code){
-  return ({not_granted:'Wrong PIN. Reload the page to enter it again.', rate_limited:'Too many requests right now. Try again in a minute.', refused:'The AI could not answer that. Try rewording.', invalid_json:'Could not read that. Try rewording it more plainly.'})[code] || 'Something went wrong. Try again.';
+  return ({not_granted:'Claude access was declined for this page.', rate_limited:'Too many requests right now. Try again in a minute.', session_expired:'Sign in to Claude again, then retry.', refused:'Claude could not answer that. Try rewording.', invalid_json:'Could not read that. Try rewording it more plainly.'})[code] || 'Something went wrong. Try again.';
 }
 
 /* ---------- views ---------- */
@@ -437,25 +491,27 @@ ${appts}`;
 const TTS = window.speechSynthesis;
 const FEMALE = /samantha|ava|allison|susan|zoe|karen|moira|tessa|serena|kate|fiona|victoria|kanya|female|zira|aria|jenny|libby|sonia|natasha|catherine/i;
 function loadVoices(){
-  if (!TTS) { $('.voice').innerHTML = '<span class="muted" style="font-size:.9rem">Voice playback is not supported in this browser.</span>'; return; }
+  if (!TTS) { $('#voiceSel').innerHTML = '<option value="__gemini">Gemini voice (natural)</option>'; return; }
   const all = TTS.getVoices().filter(v => /^(en|th)/i.test(v.lang));
-  if (!all.length) return;
+  if (!all.length) { $('#voiceSel').innerHTML = '<option value="__gemini">Gemini voice (natural)</option>'; return; }
   const fem = all.filter(v => FEMALE.test(v.name)), rest = all.filter(v => !FEMALE.test(v.name));
   const rank = v => (/premium|enhanced|natural|neural/i.test(v.name) ? 0 : 1) + (/^en/i.test(v.lang) ? 0 : 2);
   fem.sort((a,b)=>rank(a)-rank(b));
   let saved = null; try { saved = localStorage.getItem('si-voice'); } catch(e){}
   const sel = $('#voiceSel');
-  sel.innerHTML = [...fem, ...rest].map(v => `<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('');
-  sel.value = saved && all.some(v=>v.name===saved) ? saved : (fem[0] || all[0]).name;
+  sel.innerHTML = '<option value="__gemini">Gemini voice (natural)</option>' + [...fem, ...rest].map(v => `<option value="${esc(v.name)}">${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+  sel.value = saved && all.some(v=>v.name===saved) ? saved : '__gemini';
 }
 if (TTS){ loadVoices(); TTS.addEventListener?.('voiceschanged', loadVoices); }
 else loadVoices();
 $('#voiceSel')?.addEventListener('change', e => { try { localStorage.setItem('si-voice', e.target.value); } catch(_){} });
-function unlockSpeech(){ try { if (TTS && !S.unlocked){ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; TTS.speak(u); S.unlocked = true; } } catch(e){} }
-function speak(text){
-  if (!TTS || !text) return;
+function unlockSpeech(){ try { if (!S.audio){ S.audio = new Audio(); S.audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='; S.audio.play().catch(()=>{}); } if (TTS && !S.unlocked){ const u = new SpeechSynthesisUtterance(' '); u.volume = 0; TTS.speak(u); S.unlocked = true; } } catch(e){} }
+async function speak(text){
+  if (!text) return;
+  if ($('#voiceSel').value === '__gemini'){ if (await geminiSpeak(text)) return; }
+  if (!TTS) return;
   TTS.cancel();
-  const v = TTS.getVoices().find(x => x.name === $('#voiceSel').value);
+  const v = TTS.getVoices().find(x => x.name === $('#voiceSel').value) || TTS.getVoices().find(x => FEMALE.test(x.name) && /^en/i.test(x.lang));
   // speak bullet by bullet for natural pauses
   text.split(/\n+/).map(l => l.replace(/^[•\-*]\s*/, '').replace(/(\d{2}):(\d{2})/g, (m,h,mi)=> `${+h}${mi==='00'?' o\'clock':' '+mi}`)).filter(l=>l.trim()).forEach(line => {
     const u = new SpeechSynthesisUtterance(line);
@@ -464,14 +520,14 @@ function speak(text){
     TTS.speak(u);
   });
 }
-$('#speakBtn')?.addEventListener('click', () => { const t = $('#briefOut').textContent; if ($('#briefOut').classList.contains('muted')) { $('#briefBtn').click(); return; } speak(t); });
-$('#stopBtn')?.addEventListener('click', () => TTS && TTS.cancel());
+$('#speakBtn')?.addEventListener('click', () => { unlockSpeech(); const t = $('#briefOut').textContent; if ($('#briefOut').classList.contains('muted')) { $('#briefBtn').click(); return; } speak(t); });
+$('#stopBtn')?.addEventListener('click', () => { TTS && TTS.cancel(); try { S.audio && S.audio.pause(); } catch(_){} });
 
 let pending = null;
 $('#nlForm').addEventListener('submit', async e => {
   e.preventDefault();
   const txt = $('#nlIn').value.trim(), box = $('#nlPrev'); if (!txt) return;
-  if (!S.sample){ box.innerHTML = '<p class="empty">Quick add needs the AI service. Try again in a moment, or use the tabs.</p>'; return; }
+  if (!S.sample){ box.innerHTML = '<p class="empty">Quick add needs Claude, which is not available in this view. Use the tabs instead.</p>'; return; }
   box.innerHTML = '<p class="muted">Reading…</p>';
   const tr = S.tracks.map(t=>`${t.id} = "${t.label}"`).join(', ');
   const prompt = `Turn the user's text into ONE entry. Today is ${DOW[pd(TODAY).getDay()]} ${TODAY}. Resolve relative dates to YYYY-MM-DD, times to 24h HH:MM.
@@ -525,52 +581,18 @@ $('#sumBtn').onclick = async () => {
 /* ---------- boot ---------- */
 try { const v = localStorage.getItem('si-view'); if (v && document.querySelector(`[data-view="${v}"]`)) show(v); } catch(e){}
 render();
-/* ---------- backend: Netlify functions (Supabase + Gemini), PIN-protected ---------- */
-function getPin(force){
-  let p = null; try { p = localStorage.getItem('si-pin'); } catch(e){}
-  if (!p || force){ p = (prompt('Enter your Super Intelligence PIN') || '').trim(); try { localStorage.setItem('si-pin', p); } catch(e){} }
-  return p;
-}
-async function api(path, body){
-  const r = await fetch(path, { method:'POST', headers:{'content-type':'application/json','x-app-pin':getPin()}, body:JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (r.status === 401){ try { localStorage.removeItem('si-pin'); } catch(e){} }
-  if (!r.ok) throw { code: j.code || 'error', text: r.status === 401 ? copyFor('not_granted') : undefined };
-  return j;
-}
-async function refresh(){
-  const { items } = await api('/api/db', { op:'list' });
-  const by = c => items.filter(x => x.col === c);
-  S.tracks = by('tracks').map(x => ({ id:x.id, ...x.data })).sort((a,b) => (a.order||0) - (b.order||0));
-  S.visits = new Map(by('visits').map(x => [x.id, x.data]));
-  S.tasks  = by('tasks').map(x => ({ id:x.id, ...x.data }));
-  S.appts  = by('appts').map(x => ({ id:x.id, ...x.data }));
-  S.notes  = by('notes').map(x => ({ id:x.id, ...x.data }));
-  $('#dbBanner').hidden = true;
-  render();
-}
-const after = p => p.then(r => { refresh().catch(()=>{}); return r; });
-S.db = {
-  collection: col => ({ add: data => after(api('/api/db', { op:'add', col, data })) }),
-  doc: path => { const [col, id] = path.split('/'); return {
-    set:    data => after(api('/api/db', { op:'set', col, id, data })),
-    update: data => after(api('/api/db', { op:'update', col, id, data })),
-    delete: ()   => after(api('/api/db', { op:'delete', col, id })),
-  }; }
-};
-const sample = async (prompt, opts = {}) => {
-  const { text } = await api('/api/ai', { prompt });
-  opts.onText?.({ text }); return { text };
-};
-sample.json = async (prompt) => {
-  const { text } = await api('/api/ai', { prompt, json:true });
-  try { return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch(e){ throw { code:'invalid_json' }; }
-};
-S.sample = sample;
-const load = () => refresh().catch(e => { $('#dbBanner').hidden = false; if (e.code === 'not_granted') $('#todayDuty').innerHTML = '<p class="empty">Wrong PIN. Reload the page to try again.</p>'; });
-getPin(); load();
-setInterval(() => { if (!document.hidden && !S.dirty) load(); }, 30000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+(async () => {
+  S.sample = sample; S.db = db;
+  const fail = () => { $('#dbBanner').hidden = false; };
+  db.collection('tracks').onSnapshot(s => { S.tracks = s.docs.map(d=>({id:d.id, ...d.data()})); render(); }, fail);
+  db.collection('visits').onSnapshot(s => { S.visits = new Map(s.docs.map(d=>[d.id, d.data()])); render(); }, fail);
+  db.collection('tasks').onSnapshot(s => { S.tasks = s.docs.map(d=>({id:d.id, ...d.data()})); render(); }, fail);
+  db.collection('appts').onSnapshot(s => { S.appts = s.docs.map(d=>({id:d.id, ...d.data()})); render(); }, fail);
+  db.collection('notes').onSnapshot(s => { S.notes = s.docs.map(d=>({id:d.id, ...d.data()})); render(); }, fail);
+  await db.refresh();
+  setInterval(() => { if (!document.hidden) db.refresh(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) db.refresh(); });
+})();
 </script>
 
 </body></html>
